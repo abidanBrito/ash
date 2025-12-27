@@ -9,8 +9,10 @@
 #include <windows.h>
 
 constexpr char PATH_LIST_SEPARATOR = ';';
+
 #else
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 constexpr char PATH_LIST_SEPARATOR = ':';
@@ -26,7 +28,11 @@ auto is_builtin(const std::string &command) -> bool;
 auto echo_command(const std::string &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto split_path(const std::string &path) -> std::vector<std::string>;
+auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
+auto parse_arguments(const std::string &args) -> std::vector<std::string>;
+auto execute_command(const std::string &command,
+                     const std::vector<std::string> &args) -> void;
 
 auto main() -> int {
   std::cout << std::unitbuf;
@@ -47,10 +53,14 @@ auto handle_input(const std::string &input) -> bool {
 
   if (command == "exit") {
     return false;
-  } else if (command == "echo") {
+  }
+
+  if (command == "echo") {
     echo_command(args);
   } else if (command == "type") {
     type_command(args);
+  } else if (!find_executable_in_path(command).empty()) {
+    execute_command(command, parse_arguments(args));
   } else {
     handle_invalid_input(input);
   }
@@ -88,22 +98,15 @@ auto echo_command(const std::string &args) -> void {
 auto type_command(const std::string &name) -> void {
   if (is_builtin(name)) {
     std::cout << name << " is a shell builtin" << std::endl;
-  } else {
-    if (const char *path_cstr = std::getenv("PATH"); path_cstr != nullptr) {
-      std::string path(path_cstr);
-      std::vector<std::string> directories_in_path = split_path(path);
-
-      for (const std::string &dir : directories_in_path) {
-        std::string filepath = dir + "/" + name;
-        if (is_executable(filepath)) {
-          std::cout << name << " is " << filepath << std::endl;
-          return;
-        }
-      }
-    }
-
-    std::cout << name << ": not found" << std::endl;
+    return;
   }
+
+  if (auto filepath = find_executable_in_path(name); !filepath.empty()) {
+    std::cout << name << " is " << filepath << std::endl;
+    return;
+  }
+
+  std::cout << name << ": not found" << std::endl;
 }
 
 auto split_path(const std::string &path) -> std::vector<std::string> {
@@ -116,6 +119,25 @@ auto split_path(const std::string &path) -> std::vector<std::string> {
   }
 
   return directories;
+}
+
+auto find_executable_in_path(const std::string &command) -> std::string {
+  const char *path_cstr = std::getenv("PATH");
+  if (path_cstr == nullptr) {
+    return "";
+  }
+
+  std::string path(path_cstr);
+  std::vector<std::string> directories = split_path(path);
+
+  for (const std::string &dir : directories) {
+    std::string filepath = dir + "/" + command;
+    if (is_executable(filepath)) {
+      return filepath;
+    }
+  }
+
+  return "";
 }
 
 #ifdef _WIN32
@@ -155,4 +177,47 @@ auto is_executable(const std::string &filepath) -> bool {
 
   return access(filepath.c_str(), X_OK) == 0;
 }
+
+auto execute_command(const std::string &command,
+                     const std::vector<std::string> &args) -> void {
+  pid_t pid = fork();
+  if (pid == -1) {
+    std::cerr << "Failed to fork process" << std::endl;
+    return;
+  }
+
+  // Child process
+  if (pid == 0) {
+    // Program name + arguments
+    // NOTE(abi): it needs to be null-terminated.
+    std::vector<char *> c_args;
+    c_args.push_back(const_cast<char *>(command.c_str()));
+    for (const auto &arg : args) {
+      c_args.push_back(const_cast<char *>(arg.c_str()));
+    }
+    c_args.push_back(nullptr);
+
+    execvp(command.c_str(), c_args.data());
+
+    std::cerr << command << ": command not found" << std::endl;
+    exit(1);
+  }
+  // Parent process
+  else {
+    int status;
+    waitpid(pid, &status, 0);
+  }
+}
 #endif
+
+auto parse_arguments(const std::string &args) -> std::vector<std::string> {
+  std::stringstream ss(args);
+  std::vector<std::string> parsed_args;
+  std::string argument;
+
+  while (std::getline(ss, argument, ' ')) {
+    parsed_args.push_back(argument);
+  }
+
+  return parsed_args;
+}
