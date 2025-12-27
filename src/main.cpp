@@ -20,6 +20,7 @@ constexpr char PATH_LIST_SEPARATOR = ':';
 
 const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
                                                         "pwd", "cd"};
+std::string previous_directory;
 
 auto print_prompt() -> void;
 auto handle_input(const std::string &input) -> bool;
@@ -127,8 +128,38 @@ auto pwd_command() -> void {
 }
 
 auto cd_command(const std::string &path) -> void {
-  if (chdir(path.c_str()) != 0) {
-    std::cout << "cd: " << path << ": No such file or directory" << std::endl;
+  std::string target_path;
+
+  // Home directory
+  if (path.empty() || path == "~") {
+    const char *home = std::getenv("HOME");
+    if (home == nullptr) {
+      std::cerr << "cd: HOME not set" << std::endl;
+      return;
+    }
+    target_path = home;
+  }
+  // Previous directory
+  else if (path == "-") {
+    if (previous_directory.empty()) {
+      pwd_command();
+      return;
+    }
+
+    target_path = previous_directory;
+  }
+  // Absolute/relative path
+  else {
+    target_path = path;
+  }
+
+  char current_dir[1024];
+  if (getcwd(current_dir, sizeof(current_dir)) != nullptr) {
+    if (chdir(target_path.c_str()) != 0) {
+      std::cout << "cd: " << path << ": No such file or directory" << std::endl;
+    } else {
+      previous_directory = current_dir;
+    }
   }
 }
 
