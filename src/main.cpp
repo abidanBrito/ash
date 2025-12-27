@@ -300,10 +300,12 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string> {
     }
 
     // Escaped characters
-    else if (c == '\\' && !in_double_quotes && !in_single_quotes &&
-             i + 1 < args.length()) {
-      i++;
-      current_arg += args[i];
+    else if (c == '\\' && !in_single_quotes && i + 1 < args.length()) {
+      if (!in_double_quotes || args[i + 1] == '\"' || args[i + 1] == '\\') {
+        current_arg += args[++i];
+      } else {
+        current_arg += '\\';
+      }
     }
 
     else {
