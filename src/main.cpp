@@ -275,18 +275,31 @@ auto execute_command(const std::string &command,
 auto parse_arguments(const std::string &args) -> std::vector<std::string> {
   std::vector<std::string> parsed_args;
   std::string current_arg;
-  bool in_quotes = false;
+  bool in_single_quotes = false;
+  bool in_double_quotes = false;
 
   for (size_t i = 0; i < args.length(); i++) {
     char c = args[i];
-    if (c == '\'') {
-      in_quotes = !in_quotes;
-    } else if (c == ' ' && !in_quotes) {
+
+    // Double quotes
+    if (c == '\"') {
+      in_double_quotes = !in_double_quotes;
+    }
+
+    // Single quotes
+    else if (c == '\'' && !in_double_quotes) {
+      in_single_quotes = !in_single_quotes;
+    }
+
+    // Whitespace
+    else if (c == ' ' && !in_double_quotes && !in_single_quotes) {
       if (!current_arg.empty()) {
         parsed_args.push_back(current_arg);
         current_arg.clear();
       }
-    } else {
+    }
+
+    else {
       current_arg += c;
     }
   }
