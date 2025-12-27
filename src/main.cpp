@@ -282,7 +282,7 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string> {
     char c = args[i];
 
     // Double quotes
-    if (c == '\"') {
+    if (c == '\"' && !in_single_quotes) {
       in_double_quotes = !in_double_quotes;
     }
 
