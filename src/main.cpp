@@ -19,7 +19,7 @@ constexpr char PATH_LIST_SEPARATOR = ':';
 #endif
 
 const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
-                                                        "pwd"};
+                                                        "pwd", "cd"};
 
 auto print_prompt() -> void;
 auto handle_input(const std::string &input) -> bool;
@@ -29,6 +29,7 @@ auto is_builtin(const std::string &command) -> bool;
 auto echo_command(const std::string &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
+auto cd_command(const std::string &path) -> void;
 auto split_path(const std::string &path) -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
@@ -63,6 +64,8 @@ auto handle_input(const std::string &input) -> bool {
     type_command(args);
   } else if (command == "pwd") {
     pwd_command();
+  } else if (command == "cd") {
+    cd_command(args);
   } else if (!find_executable_in_path(command).empty()) {
     execute_command(command, parse_arguments(args));
   } else {
@@ -121,6 +124,12 @@ auto pwd_command() -> void {
   }
 
   std::cerr << "pwd: error getting the current working directory" << std::endl;
+}
+
+auto cd_command(const std::string &path) -> void {
+  if (chdir(path.c_str()) != 0) {
+    std::cout << "cd: " << path << ": No such file or directory" << std::endl;
+  }
 }
 
 auto split_path(const std::string &path) -> std::vector<std::string> {
