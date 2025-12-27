@@ -18,7 +18,8 @@ constexpr char PATH_LIST_SEPARATOR = ';';
 constexpr char PATH_LIST_SEPARATOR = ':';
 #endif
 
-const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type"};
+const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
+                                                        "pwd"};
 
 auto print_prompt() -> void;
 auto handle_input(const std::string &input) -> bool;
@@ -27,6 +28,7 @@ auto repl_loop() -> void;
 auto is_builtin(const std::string &command) -> bool;
 auto echo_command(const std::string &args) -> void;
 auto type_command(const std::string &name) -> void;
+auto pwd_command() -> void;
 auto split_path(const std::string &path) -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
@@ -59,6 +61,8 @@ auto handle_input(const std::string &input) -> bool {
     echo_command(args);
   } else if (command == "type") {
     type_command(args);
+  } else if (command == "pwd") {
+    pwd_command();
   } else if (!find_executable_in_path(command).empty()) {
     execute_command(command, parse_arguments(args));
   } else {
@@ -107,6 +111,16 @@ auto type_command(const std::string &name) -> void {
   }
 
   std::cout << name << ": not found" << std::endl;
+}
+
+auto pwd_command() -> void {
+  char cwd[1024];
+  if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+    std::cout << cwd << std::endl;
+    return;
+  }
+
+  std::cerr << "pwd: error getting the current working directory" << std::endl;
 }
 
 auto split_path(const std::string &path) -> std::vector<std::string> {
