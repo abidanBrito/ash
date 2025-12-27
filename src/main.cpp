@@ -27,7 +27,7 @@ auto handle_input(const std::string &input) -> bool;
 auto handle_invalid_input(const std::string &input) -> void;
 auto repl_loop() -> void;
 auto is_builtin(const std::string &command) -> bool;
-auto echo_command(const std::string &args) -> void;
+auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
@@ -59,8 +59,9 @@ auto handle_input(const std::string &input) -> bool {
     return false;
   }
 
+  std::vector<std::string> parsed_args = parse_arguments(args);
   if (command == "echo") {
-    echo_command(args);
+    echo_command(parsed_args);
   } else if (command == "type") {
     type_command(args);
   } else if (command == "pwd") {
@@ -68,7 +69,7 @@ auto handle_input(const std::string &input) -> bool {
   } else if (command == "cd") {
     cd_command(args);
   } else if (!find_executable_in_path(command).empty()) {
-    execute_command(command, parse_arguments(args));
+    execute_command(command, parsed_args);
   } else {
     handle_invalid_input(input);
   }
@@ -99,8 +100,15 @@ auto is_builtin(const std::string &command) -> bool {
   return SHELL_BUILTINS.find(command) != SHELL_BUILTINS.end();
 }
 
-auto echo_command(const std::string &args) -> void {
-  std::cout << args << std::endl;
+auto echo_command(const std::vector<std::string> &args) -> void {
+  for (size_t i = 0; i < args.size(); i++) {
+    std::cout << args[i];
+    if (i < args.size() - 1) {
+      std::cout << " ";
+    }
+  }
+
+  std::cout << std::endl;
 }
 
 auto type_command(const std::string &name) -> void {
@@ -265,12 +273,26 @@ auto execute_command(const std::string &command,
 #endif
 
 auto parse_arguments(const std::string &args) -> std::vector<std::string> {
-  std::stringstream ss(args);
   std::vector<std::string> parsed_args;
-  std::string argument;
+  std::string current_arg;
+  bool in_quotes = false;
 
-  while (std::getline(ss, argument, ' ')) {
-    parsed_args.push_back(argument);
+  for (size_t i = 0; i < args.length(); i++) {
+    char c = args[i];
+    if (c == '\'') {
+      in_quotes = !in_quotes;
+    } else if (c == ' ' && !in_quotes) {
+      if (!current_arg.empty()) {
+        parsed_args.push_back(current_arg);
+        current_arg.clear();
+      }
+    } else {
+      current_arg += c;
+    }
+  }
+
+  if (!current_arg.empty()) {
+    parsed_args.push_back(current_arg);
   }
 
   return parsed_args;
