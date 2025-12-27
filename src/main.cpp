@@ -23,9 +23,12 @@ const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
 std::string previous_directory;
 
 auto print_prompt() -> void;
+auto repl_loop() -> void;
+auto parse_command_and_position(const std::string &input)
+    -> std::pair<std::string, size_t>;
+auto parse_arguments(const std::string &args) -> std::vector<std::string>;
 auto handle_input(const std::string &input) -> bool;
 auto handle_invalid_input(const std::string &input) -> void;
-auto repl_loop() -> void;
 auto is_builtin(const std::string &command) -> bool;
 auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
@@ -34,7 +37,6 @@ auto cd_command(const std::string &path) -> void;
 auto split_path(const std::string &path) -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
-auto parse_arguments(const std::string &args) -> std::vector<std::string>;
 auto execute_command(const std::string &command,
                      const std::vector<std::string> &args) -> void;
 
@@ -47,39 +49,6 @@ auto main() -> int {
 }
 
 auto print_prompt() -> void { std::cout << "$ "; }
-
-auto handle_input(const std::string &input) -> bool {
-  size_t first_space_pos = input.find(' ');
-  std::string command = input.substr(0, first_space_pos);
-  std::string args = (first_space_pos != std::string::npos)
-                         ? input.substr(first_space_pos + 1)
-                         : "";
-
-  if (command == "exit") {
-    return false;
-  }
-
-  std::vector<std::string> parsed_args = parse_arguments(args);
-  if (command == "echo") {
-    echo_command(parsed_args);
-  } else if (command == "type") {
-    type_command(args);
-  } else if (command == "pwd") {
-    pwd_command();
-  } else if (command == "cd") {
-    cd_command(args);
-  } else if (!find_executable_in_path(command).empty()) {
-    execute_command(command, parsed_args);
-  } else {
-    handle_invalid_input(input);
-  }
-
-  return true;
-}
-
-auto handle_invalid_input(const std::string &input) -> void {
-  std::cout << input << ": command not found" << std::endl;
-}
 
 auto repl_loop() -> void {
   while (true) {
@@ -94,6 +63,116 @@ auto repl_loop() -> void {
       break;
     }
   }
+}
+
+auto parse_command_and_position(const std::string &input)
+    -> std::pair<std::string, size_t> {
+  if (input.empty()) {
+    return {"", 0};
+  }
+
+  std::string command;
+  bool in_single_quotes = false;
+  bool in_double_quotes = false;
+
+  size_t i = 0;
+  for (; i < input.size(); i++) {
+    char c = input[i];
+
+    if (!in_double_quotes && c == '\'') {
+      in_single_quotes = !in_single_quotes;
+    } else if (!in_single_quotes && c == '\"') {
+      in_double_quotes = !in_double_quotes;
+    } else if (!in_single_quotes && !in_double_quotes && c == ' ') {
+      break;
+    } else {
+      command += c;
+    }
+  }
+
+  return {command, i};
+}
+
+auto parse_arguments(const std::string &args) -> std::vector<std::string> {
+  std::vector<std::string> parsed_args;
+  std::string current_arg;
+  bool in_single_quotes = false;
+  bool in_double_quotes = false;
+
+  for (size_t i = 0; i < args.length(); i++) {
+    char c = args[i];
+
+    // Double quotes
+    if (c == '\"' && !in_single_quotes) {
+      in_double_quotes = !in_double_quotes;
+    }
+
+    // Single quotes
+    else if (c == '\'' && !in_double_quotes) {
+      in_single_quotes = !in_single_quotes;
+    }
+
+    // Whitespace
+    else if (c == ' ' && !in_double_quotes && !in_single_quotes) {
+      if (!current_arg.empty()) {
+        parsed_args.push_back(current_arg);
+        current_arg.clear();
+      }
+    }
+
+    // Escaped characters
+    else if (c == '\\' && !in_single_quotes && i + 1 < args.length()) {
+      if (!in_double_quotes || args[i + 1] == '\"' || args[i + 1] == '\\') {
+        current_arg += args[++i];
+      } else {
+        current_arg += '\\';
+      }
+    }
+
+    else {
+      current_arg += c;
+    }
+  }
+
+  if (!current_arg.empty()) {
+    parsed_args.push_back(current_arg);
+  }
+
+  return parsed_args;
+}
+
+auto handle_input(const std::string &input) -> bool {
+  auto [command, command_end_pos] = parse_command_and_position(input);
+  if (command == "exit") {
+    return false;
+  }
+  std::string args = (command_end_pos < input.length())
+                         ? input.substr(command_end_pos + 1)
+                         : "";
+  std::vector<std::string> parsed_args = parse_arguments(args);
+
+  if (command == "echo") {
+    echo_command(parsed_args);
+  } else if (command == "type") {
+    type_command(args);
+  } else if (command == "pwd") {
+    pwd_command();
+  } else if (command == "cd") {
+    cd_command(args);
+  } else {
+    std::string executable_path = find_executable_in_path(command);
+    if (!executable_path.empty()) {
+      execute_command(executable_path, parsed_args);
+    } else {
+      handle_invalid_input(command);
+    }
+  }
+
+  return true;
+}
+
+auto handle_invalid_input(const std::string &input) -> void {
+  std::cout << input << ": command not found" << std::endl;
 }
 
 auto is_builtin(const std::string &command) -> bool {
@@ -251,12 +330,19 @@ auto execute_command(const std::string &command,
   // Child process
   if (pid == 0) {
     // Program name + arguments
-    // NOTE(abi): it needs to be null-terminated.
+    std::string program_name;
+    size_t last_slash = command.rfind('/');
+    if (last_slash != std::string::npos) {
+      program_name = command.substr(last_slash + 1);
+    }
+
     std::vector<char *> c_args;
-    c_args.push_back(const_cast<char *>(command.c_str()));
+    c_args.push_back(const_cast<char *>(program_name.c_str()));
     for (const auto &arg : args) {
       c_args.push_back(const_cast<char *>(arg.c_str()));
     }
+
+    // NOTE(abi): it needs to be null-terminated.
     c_args.push_back(nullptr);
 
     execvp(command.c_str(), c_args.data());
@@ -271,51 +357,3 @@ auto execute_command(const std::string &command,
   }
 }
 #endif
-
-auto parse_arguments(const std::string &args) -> std::vector<std::string> {
-  std::vector<std::string> parsed_args;
-  std::string current_arg;
-  bool in_single_quotes = false;
-  bool in_double_quotes = false;
-
-  for (size_t i = 0; i < args.length(); i++) {
-    char c = args[i];
-
-    // Double quotes
-    if (c == '\"' && !in_single_quotes) {
-      in_double_quotes = !in_double_quotes;
-    }
-
-    // Single quotes
-    else if (c == '\'' && !in_double_quotes) {
-      in_single_quotes = !in_single_quotes;
-    }
-
-    // Whitespace
-    else if (c == ' ' && !in_double_quotes && !in_single_quotes) {
-      if (!current_arg.empty()) {
-        parsed_args.push_back(current_arg);
-        current_arg.clear();
-      }
-    }
-
-    // Escaped characters
-    else if (c == '\\' && !in_single_quotes && i + 1 < args.length()) {
-      if (!in_double_quotes || args[i + 1] == '\"' || args[i + 1] == '\\') {
-        current_arg += args[++i];
-      } else {
-        current_arg += '\\';
-      }
-    }
-
-    else {
-      current_arg += c;
-    }
-  }
-
-  if (!current_arg.empty()) {
-    parsed_args.push_back(current_arg);
-  }
-
-  return parsed_args;
-}
