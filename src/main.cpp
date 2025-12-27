@@ -5,6 +5,7 @@ void print_prompt();
 bool handle_input(const std::string &input);
 void handle_invalid_input(const std::string &input);
 void repl_loop();
+void echo_command(const std::string &args);
 
 int main() {
   std::cout << std::unitbuf;
@@ -18,8 +19,19 @@ int main() {
 void print_prompt() { std::cout << "$ "; }
 
 bool handle_input(const std::string &input) {
-  if (input == "exit") {
+  size_t first_space_pos = input.find(' ');
+  std::string command = input.substr(0, first_space_pos);
+
+  if (command == "exit") {
     return false;
+  }
+
+  if (command == "echo") {
+    std::string args = (first_space_pos != std::string::npos)
+                           ? input.substr(first_space_pos + 1)
+                           : "";
+    echo_command(args);
+    return true;
   }
 
   handle_invalid_input(input);
@@ -44,3 +56,5 @@ void repl_loop() {
     }
   }
 }
+
+void echo_command(const std::string &args) { std::cout << args << std::endl; }
