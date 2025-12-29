@@ -280,9 +280,15 @@ auto parse_redirection(std::string &args) -> RedirectionSpec {
       size_t pos = 0;
       while ((pos = args.find(">", pos)) != std::string::npos) {
         if (pos > 0 && args[pos - 1] == '2') {
-          pos++;
+          pos += 2;
           continue;
         }
+
+        if (pos + 1 < args.length() && args[pos + 1] == '>') {
+          pos += 2;
+          continue;
+        }
+
         stdout_pos = pos;
         stdout_len = 1;
         break;
@@ -311,29 +317,17 @@ auto parse_redirection(std::string &args) -> RedirectionSpec {
   }
 
   // Clean arguments string
+  size_t first_redirection_pos = std::string::npos;
   if (stdout_pos != std::string::npos && stderr_pos != std::string::npos) {
-    if (stdout_pos > stderr_pos) {
-      args = args.substr(0, stdout_pos);
-      args = (redirection_spec.stderr_mode == RedirectionMode::APPEND)
-                 ? args.substr(0, args.find("2>>"))
-                 : args.substr(0, args.find("2>"));
-    } else {
-      args = args.substr(0, stderr_pos);
-      stdout_pos = (redirection_spec.stdout_mode == RedirectionMode::APPEND)
-                       ? args.find("1>>")
-                       : args.find("1>");
-      if (stdout_pos == std::string::npos) {
-        stdout_pos = (redirection_spec.stdout_mode == RedirectionMode::APPEND)
-                         ? args.find(">>")
-                         : args.find(">");
-      }
-      args = args.substr(0, stdout_pos);
-    }
-
+    first_redirection_pos = std::min(stdout_pos, stderr_pos);
   } else if (stdout_pos != std::string::npos) {
-    args = args.substr(0, stdout_pos);
+    first_redirection_pos = stdout_pos;
   } else if (stderr_pos != std::string::npos) {
-    args = args.substr(0, stderr_pos);
+    first_redirection_pos = stderr_pos;
+  }
+
+  if (first_redirection_pos != std::string::npos) {
+    args = args.substr(0, first_redirection_pos);
   }
 
   return redirection_spec;
