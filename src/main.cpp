@@ -1,4 +1,5 @@
 #include <cstdlib>
+
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -6,39 +7,51 @@
 #include <vector>
 
 #ifdef _WIN32
-#include <windows.h>
 
+#include <windows.h>
 constexpr char PATH_LIST_SEPARATOR = ';';
 
 #else
+
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 constexpr char PATH_LIST_SEPARATOR = ':';
+
 #endif
 
 const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
                                                         "pwd", "cd"};
 std::string previous_directory;
 
+struct RedirectionSpec {
+  std::string output_file;
+  bool has_redirection = false;
+};
+
 auto print_prompt() -> void;
 auto repl_loop() -> void;
 auto parse_command_and_position(const std::string &input)
     -> std::pair<std::string, size_t>;
 auto parse_arguments(const std::string &args) -> std::vector<std::string>;
+auto parse_redirection(std::string &args) -> RedirectionSpec;
 auto handle_input(const std::string &input) -> bool;
-auto handle_invalid_input(const std::string &input) -> void;
-auto is_builtin(const std::string &command) -> bool;
+auto handle_invalid_command(const std::string &input) -> void;
 auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
+auto is_builtin(const std::string &command) -> bool;
+auto execute_builtin(const std::string &command, const std::string &args)
+    -> void;
 auto split_path(const std::string &path) -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
-auto execute_command(const std::string &command,
-                     const std::vector<std::string> &args) -> void;
+auto execute_command(const std::string &command, const std::string &args,
+                     RedirectionSpec redirection_spec) -> bool;
+auto redirect_stdout(std::string filename) -> bool;
 
 auto main() -> int {
   std::cout << std::unitbuf;
@@ -83,7 +96,8 @@ auto parse_command_and_position(const std::string &input)
       in_single_quotes = !in_single_quotes;
     } else if (!in_single_quotes && c == '\"') {
       in_double_quotes = !in_double_quotes;
-    } else if (!in_single_quotes && !in_double_quotes && c == ' ') {
+    } else if (!in_single_quotes && !in_double_quotes &&
+               (c == ' ' || c == '\t')) {
       break;
     } else {
       command += c;
@@ -141,42 +155,74 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string> {
   return parsed_args;
 }
 
+auto parse_redirection(std::string &args) -> RedirectionSpec {
+  RedirectionSpec redirection_spec;
+  size_t redirection_pos = std::string::npos;
+  size_t redirection_length = 0;
+
+  redirection_pos = args.find("1>");
+  if (redirection_pos != std::string::npos) {
+    redirection_length = 2;
+  } else {
+    redirection_pos = args.find(">");
+    if (redirection_pos != std::string::npos) {
+      redirection_length = 1;
+    }
+  }
+
+  if (redirection_pos == std::string::npos) {
+    return redirection_spec;
+  }
+
+  size_t filename_start = redirection_pos + redirection_length;
+  if (filename_start == args.length()) {
+    return redirection_spec;
+  }
+
+  while (filename_start < args.length() && args[filename_start] == ' ') {
+    filename_start++;
+  }
+
+  size_t filename_end = filename_start;
+  while (filename_end < args.length() && args[filename_end] != ' ') {
+    filename_end++;
+  }
+
+  redirection_spec.output_file =
+      args.substr(filename_start, filename_end - filename_start);
+  redirection_spec.has_redirection = true;
+
+  args = args.substr(0, redirection_pos);
+
+  return redirection_spec;
+}
+
 auto handle_input(const std::string &input) -> bool {
   auto [command, command_end_pos] = parse_command_and_position(input);
+
+  if (command.empty()) {
+    return true;
+  }
+
   if (command == "exit") {
     return false;
   }
+
   std::string args = (command_end_pos < input.length())
                          ? input.substr(command_end_pos + 1)
                          : "";
-  std::vector<std::string> parsed_args = parse_arguments(args);
+  RedirectionSpec redirection_spec = parse_redirection(args);
 
-  if (command == "echo") {
-    echo_command(parsed_args);
-  } else if (command == "type") {
-    type_command(args);
-  } else if (command == "pwd") {
-    pwd_command();
-  } else if (command == "cd") {
-    cd_command(args);
-  } else {
-    std::string executable_path = find_executable_in_path(command);
-    if (!executable_path.empty()) {
-      execute_command(executable_path, parsed_args);
-    } else {
-      handle_invalid_input(command);
-    }
+  auto success = execute_command(command, args, redirection_spec);
+  if (!success) {
+    handle_invalid_command(command);
   }
 
   return true;
 }
 
-auto handle_invalid_input(const std::string &input) -> void {
-  std::cout << input << ": command not found" << std::endl;
-}
-
-auto is_builtin(const std::string &command) -> bool {
-  return SHELL_BUILTINS.find(command) != SHELL_BUILTINS.end();
+auto handle_invalid_command(const std::string &command) -> void {
+  std::cout << command << ": command not found" << std::endl;
 }
 
 auto echo_command(const std::vector<std::string> &args) -> void {
@@ -250,6 +296,23 @@ auto cd_command(const std::string &path) -> void {
   }
 }
 
+auto is_builtin(const std::string &command) -> bool {
+  return SHELL_BUILTINS.find(command) != SHELL_BUILTINS.end();
+}
+
+auto execute_builtin(const std::string &command, const std::string &args)
+    -> void {
+  if (command == "echo") {
+    echo_command(parse_arguments(args));
+  } else if (command == "type") {
+    type_command(args);
+  } else if (command == "pwd") {
+    pwd_command();
+  } else if (command == "cd") {
+    cd_command(args);
+  }
+}
+
 auto split_path(const std::string &path) -> std::vector<std::string> {
   std::vector<std::string> directories;
   std::stringstream ss(path);
@@ -319,41 +382,85 @@ auto is_executable(const std::string &filepath) -> bool {
   return access(filepath.c_str(), X_OK) == 0;
 }
 
-auto execute_command(const std::string &command,
-                     const std::vector<std::string> &args) -> void {
-  pid_t pid = fork();
-  if (pid == -1) {
-    std::cerr << "Failed to fork process" << std::endl;
-    return;
+auto redirect_stdout(std::string filename) -> bool {
+  int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd == -1) {
+    std::cerr << "Failed to open file: " << filename << std::endl;
+    return false;
   }
 
-  // Child process
-  if (pid == 0) {
-    // Program name + arguments
-    std::string program_name;
-    size_t last_slash = command.rfind('/');
-    if (last_slash != std::string::npos) {
-      program_name = command.substr(last_slash + 1);
-    }
-
-    std::vector<char *> c_args;
-    c_args.push_back(const_cast<char *>(program_name.c_str()));
-    for (const auto &arg : args) {
-      c_args.push_back(const_cast<char *>(arg.c_str()));
-    }
-
-    // NOTE(abi): it needs to be null-terminated.
-    c_args.push_back(nullptr);
-
-    execvp(command.c_str(), c_args.data());
-
-    std::cerr << command << ": command not found" << std::endl;
-    exit(1);
+  int duplicate_fd = dup2(fd, STDOUT_FILENO);
+  if (duplicate_fd == -1) {
+    std::cerr << "Failed to redirect output" << std::endl;
+    close(fd);
+    return false;
   }
-  // Parent process
-  else {
+
+  close(fd);
+  return true;
+}
+
+auto execute_command(const std::string &command, const std::string &args,
+                     RedirectionSpec redirection_spec) -> bool {
+  std::string executable_path;
+  if (!is_builtin(command)) {
+    executable_path = find_executable_in_path(command);
+    if (executable_path.empty()) {
+      return false;
+    }
+  }
+
+  bool needs_fork = redirection_spec.has_redirection || !is_builtin(command);
+  if (needs_fork) {
+    pid_t pid = fork();
+    if (pid == -1) {
+      std::cerr << "Failed to fork process" << std::endl;
+      return false;
+    }
+
+    // Child process
+    if (pid == 0) {
+      if (redirection_spec.has_redirection) {
+        if (!redirect_stdout(redirection_spec.output_file)) {
+          exit(1);
+        }
+      }
+
+      if (is_builtin(command)) {
+        execute_builtin(command, args);
+        exit(0);
+      }
+
+      // Program name
+      std::string program_name;
+      size_t last_slash = executable_path.rfind('/');
+      if (last_slash != std::string::npos) {
+        program_name = executable_path.substr(last_slash + 1);
+      }
+
+      // Arguments
+      // NOTE(abi): the C-like version needs to be null-terminated.
+      std::vector<std::string> parsed_args = parse_arguments(args);
+      std::vector<char *> c_args;
+      c_args.push_back(const_cast<char *>(program_name.c_str()));
+      for (const auto &arg : parsed_args) {
+        c_args.push_back(const_cast<char *>(arg.c_str()));
+      }
+      c_args.push_back(nullptr);
+
+      execvp(executable_path.c_str(), c_args.data());
+
+      std::cerr << executable_path << ": command not found" << std::endl;
+      exit(1);
+    }
+
+    // Parent process
     int status;
     waitpid(pid, &status, 0);
+    return true;
   }
+
+  execute_builtin(command, args);
+  return true;
 }
 #endif
