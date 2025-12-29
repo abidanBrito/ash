@@ -26,21 +26,32 @@ const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
                                                         "pwd", "cd"};
 std::string previous_directory;
 
+enum class RedirectionMode { TRUNCATE, APPEND };
+
 struct RedirectionSpec {
   std::string stdout_filename;
   std::string stderr_filename;
   bool has_stdout_redirection = false;
   bool has_stderr_redirection = false;
+  RedirectionMode stdout_mode = RedirectionMode::TRUNCATE;
+  RedirectionMode stderr_mode = RedirectionMode::TRUNCATE;
 };
 
+// Prompt & REPL
 auto print_prompt() -> void;
 auto repl_loop() -> void;
+
+// Parsing
 auto parse_command_and_position(const std::string &input)
     -> std::pair<std::string, size_t>;
 auto parse_arguments(const std::string &args) -> std::vector<std::string>;
 auto parse_redirection(std::string &args) -> RedirectionSpec;
+
+// Input handling
 auto handle_input(const std::string &input) -> bool;
 auto handle_invalid_command(const std::string &input) -> void;
+
+// Builtin commands
 auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
@@ -48,13 +59,18 @@ auto cd_command(const std::string &path) -> void;
 auto is_builtin(const std::string &command) -> bool;
 auto execute_builtin(const std::string &command, const std::string &args)
     -> void;
+
+// External commands
 auto split_path(const std::string &path) -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
 auto execute_command(const std::string &command, const std::string &args,
                      RedirectionSpec redirection_spec) -> bool;
-auto redirect_stdout(const std::string &filename) -> bool;
-auto redirect_stderr(const std::string &filename) -> bool;
+
+// Redirection
+auto redirect_stream(int stream_file_descriptor, const std::string &filename,
+                     RedirectionMode mode) -> bool;
+auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int;
 
 auto main() -> int {
   std::cout << std::unitbuf;
@@ -161,10 +177,14 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string> {
 auto parse_redirection(std::string &args) -> RedirectionSpec {
   RedirectionSpec redirection_spec;
 
-  // Stderr (2>)
-  // NOTE(abi): process stderr first to skip over any '>' that's part of '2>'.
-  size_t stderr_len = 2;
-  size_t stderr_pos = args.find("2>");
+  size_t stderr_pos = std::string::npos;
+  size_t stderr_len = 0;
+  size_t stdout_pos = std::string::npos;
+  size_t stdout_len = 0;
+
+  // Stderr append (2>>)
+  stderr_len = 3;
+  stderr_pos = args.find("2>>");
   if (stderr_pos != std::string::npos) {
     size_t filename_start = stderr_pos + stderr_len;
     while (filename_start < args.length() &&
@@ -182,29 +202,55 @@ auto parse_redirection(std::string &args) -> RedirectionSpec {
       redirection_spec.stderr_filename =
           args.substr(filename_start, filename_end - filename_start);
       redirection_spec.has_stderr_redirection = true;
+      redirection_spec.stderr_mode = RedirectionMode::APPEND;
     }
   }
 
-  // Stdout (> or 1>)
-  size_t stdout_length = 0;
-  size_t stdout_pos = args.find("1>");
+  // Stderr overwrite (2>)
+  if (redirection_spec.stderr_mode != RedirectionMode::APPEND) {
+    stderr_len = 2;
+    stderr_pos = args.find("2>");
+    if (stderr_pos != std::string::npos) {
+      size_t filename_start = stderr_pos + stderr_len;
+      while (filename_start < args.length() &&
+             (args[filename_start] == ' ' || args[filename_start] == '\t')) {
+        filename_start++;
+      }
+
+      if (filename_start < args.length()) {
+        size_t filename_end = filename_start;
+        while (filename_end < args.length() && args[filename_end] != ' ' &&
+               args[filename_end] != '\t') {
+          filename_end++;
+        }
+
+        redirection_spec.stderr_filename =
+            args.substr(filename_start, filename_end - filename_start);
+        redirection_spec.has_stderr_redirection = true;
+      }
+    }
+  }
+
+  // Stdout append (1>> or >>)
+  stdout_len = 0;
+  stdout_pos = args.find("1>>");
   if (stdout_pos != std::string::npos) {
-    stdout_length = 2;
+    stdout_len = 3;
   } else {
     size_t pos = 0;
-    while ((pos = args.find(">", pos)) != std::string::npos) {
+    while ((pos = args.find(">>", pos)) != std::string::npos) {
       if (pos > 0 && args[pos - 1] == '2') {
-        pos++;
+        pos += 2;
         continue;
       }
       stdout_pos = pos;
-      stdout_length = 1;
+      stdout_len = 2;
       break;
     }
   }
 
   if (stdout_pos != std::string::npos) {
-    size_t filename_start = stdout_pos + stdout_length;
+    size_t filename_start = stdout_pos + stdout_len;
     if (filename_start == args.length()) {
       return redirection_spec;
     }
@@ -221,17 +267,65 @@ auto parse_redirection(std::string &args) -> RedirectionSpec {
     redirection_spec.stdout_filename =
         args.substr(filename_start, filename_end - filename_start);
     redirection_spec.has_stdout_redirection = true;
+    redirection_spec.stdout_mode = RedirectionMode::APPEND;
   }
 
+  // Stdout overwrite (> or 1>)
+  if (redirection_spec.stdout_mode != RedirectionMode::APPEND) {
+    stdout_len = 0;
+    stdout_pos = args.find("1>");
+    if (stdout_pos != std::string::npos) {
+      stdout_len = 2;
+    } else {
+      size_t pos = 0;
+      while ((pos = args.find(">", pos)) != std::string::npos) {
+        if (pos > 0 && args[pos - 1] == '2') {
+          pos++;
+          continue;
+        }
+        stdout_pos = pos;
+        stdout_len = 1;
+        break;
+      }
+    }
+
+    if (stdout_pos != std::string::npos) {
+      size_t filename_start = stdout_pos + stdout_len;
+      if (filename_start == args.length()) {
+        return redirection_spec;
+      }
+
+      while (filename_start < args.length() && args[filename_start] == ' ') {
+        filename_start++;
+      }
+
+      size_t filename_end = filename_start;
+      while (filename_end < args.length() && args[filename_end] != ' ') {
+        filename_end++;
+      }
+
+      redirection_spec.stdout_filename =
+          args.substr(filename_start, filename_end - filename_start);
+      redirection_spec.has_stdout_redirection = true;
+    }
+  }
+
+  // Clean arguments string
   if (stdout_pos != std::string::npos && stderr_pos != std::string::npos) {
     if (stdout_pos > stderr_pos) {
       args = args.substr(0, stdout_pos);
-      args = args.substr(0, args.find("2>"));
+      args = (redirection_spec.stderr_mode == RedirectionMode::APPEND)
+                 ? args.substr(0, args.find("2>>"))
+                 : args.substr(0, args.find("2>"));
     } else {
       args = args.substr(0, stderr_pos);
-      stdout_pos = args.find("1>");
+      stdout_pos = (redirection_spec.stdout_mode == RedirectionMode::APPEND)
+                       ? args.find("1>>")
+                       : args.find("1>");
       if (stdout_pos == std::string::npos) {
-        stdout_pos = args.find(">");
+        stdout_pos = (redirection_spec.stdout_mode == RedirectionMode::APPEND)
+                         ? args.find(">>")
+                         : args.find(">");
       }
       args = args.substr(0, stdout_pos);
     }
@@ -453,13 +547,15 @@ auto execute_command(const std::string &command, const std::string &args,
     // Child process
     if (pid == 0) {
       if (redirection_spec.has_stdout_redirection) {
-        if (!redirect_stdout(redirection_spec.stdout_filename)) {
+        if (!redirect_stream(STDOUT_FILENO, redirection_spec.stdout_filename,
+                             redirection_spec.stdout_mode)) {
           exit(1);
         }
       }
 
       if (redirection_spec.has_stderr_redirection) {
-        if (!redirect_stderr(redirection_spec.stderr_filename)) {
+        if (!redirect_stream(STDERR_FILENO, redirection_spec.stderr_filename,
+                             redirection_spec.stderr_mode)) {
           exit(1);
         }
       }
@@ -503,34 +599,25 @@ auto execute_command(const std::string &command, const std::string &args,
 }
 #endif
 
-auto redirect_stdout(const std::string &filename) -> bool {
-  int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-  if (fd == -1) {
-    std::cerr << "Failed to open file: " << filename << std::endl;
-    return false;
-  }
+auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int {
+  int flags = O_WRONLY | O_CREAT;
+  flags |= (mode == RedirectionMode::APPEND) ? O_APPEND : O_TRUNC;
 
-  int duplicate_fd = dup2(fd, STDOUT_FILENO);
-  if (duplicate_fd == -1) {
-    std::cerr << "Failed to redirect output" << std::endl;
-    close(fd);
-    return false;
-  }
-
-  close(fd);
-  return true;
+  return flags;
 }
 
-auto redirect_stderr(const std::string &filename) -> bool {
-  int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+auto redirect_stream(int stream_file_descriptor, const std::string &filename,
+                     RedirectionMode mode) -> bool {
+  int fd =
+      open(filename.c_str(), get_redirection_file_descriptor_flags(mode), 0644);
   if (fd == -1) {
     std::cerr << "Failed to open file: " << filename << std::endl;
     return false;
   }
 
-  int duplicate_fd = dup2(fd, STDERR_FILENO);
+  int duplicate_fd = dup2(fd, stream_file_descriptor);
   if (duplicate_fd == -1) {
-    std::cerr << "Failed to redirect error output" << std::endl;
+    std::cerr << "Failed to redirect output" << std::endl;
     close(fd);
     return false;
   }
