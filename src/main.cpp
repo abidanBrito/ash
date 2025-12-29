@@ -27,8 +27,10 @@ const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
 std::string previous_directory;
 
 struct RedirectionSpec {
-  std::string output_file;
-  bool has_redirection = false;
+  std::string stdout_filename;
+  std::string stderr_filename;
+  bool has_stdout_redirection = false;
+  bool has_stderr_redirection = false;
 };
 
 auto print_prompt() -> void;
@@ -51,7 +53,8 @@ auto find_executable_in_path(const std::string &command) -> std::string;
 auto is_executable(const std::string &filepath) -> bool;
 auto execute_command(const std::string &command, const std::string &args,
                      RedirectionSpec redirection_spec) -> bool;
-auto redirect_stdout(std::string filename) -> bool;
+auto redirect_stdout(const std::string &filename) -> bool;
+auto redirect_stderr(const std::string &filename) -> bool;
 
 auto main() -> int {
   std::cout << std::unitbuf;
@@ -157,42 +160,87 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string> {
 
 auto parse_redirection(std::string &args) -> RedirectionSpec {
   RedirectionSpec redirection_spec;
-  size_t redirection_pos = std::string::npos;
-  size_t redirection_length = 0;
 
-  redirection_pos = args.find("1>");
-  if (redirection_pos != std::string::npos) {
-    redirection_length = 2;
-  } else {
-    redirection_pos = args.find(">");
-    if (redirection_pos != std::string::npos) {
-      redirection_length = 1;
+  // Stderr (2>)
+  // NOTE(abi): process stderr first to skip over any '>' that's part of '2>'.
+  size_t stderr_len = 2;
+  size_t stderr_pos = args.find("2>");
+  if (stderr_pos != std::string::npos) {
+    size_t filename_start = stderr_pos + stderr_len;
+    while (filename_start < args.length() &&
+           (args[filename_start] == ' ' || args[filename_start] == '\t')) {
+      filename_start++;
+    }
+
+    if (filename_start < args.length()) {
+      size_t filename_end = filename_start;
+      while (filename_end < args.length() && args[filename_end] != ' ' &&
+             args[filename_end] != '\t') {
+        filename_end++;
+      }
+
+      redirection_spec.stderr_filename =
+          args.substr(filename_start, filename_end - filename_start);
+      redirection_spec.has_stderr_redirection = true;
     }
   }
 
-  if (redirection_pos == std::string::npos) {
-    return redirection_spec;
+  // Stdout (> or 1>)
+  size_t stdout_length = 0;
+  size_t stdout_pos = args.find("1>");
+  if (stdout_pos != std::string::npos) {
+    stdout_length = 2;
+  } else {
+    size_t pos = 0;
+    while ((pos = args.find(">", pos)) != std::string::npos) {
+      if (pos > 0 && args[pos - 1] == '2') {
+        pos++;
+        continue;
+      }
+      stdout_pos = pos;
+      stdout_length = 1;
+      break;
+    }
   }
 
-  size_t filename_start = redirection_pos + redirection_length;
-  if (filename_start == args.length()) {
-    return redirection_spec;
+  if (stdout_pos != std::string::npos) {
+    size_t filename_start = stdout_pos + stdout_length;
+    if (filename_start == args.length()) {
+      return redirection_spec;
+    }
+
+    while (filename_start < args.length() && args[filename_start] == ' ') {
+      filename_start++;
+    }
+
+    size_t filename_end = filename_start;
+    while (filename_end < args.length() && args[filename_end] != ' ') {
+      filename_end++;
+    }
+
+    redirection_spec.stdout_filename =
+        args.substr(filename_start, filename_end - filename_start);
+    redirection_spec.has_stdout_redirection = true;
   }
 
-  while (filename_start < args.length() && args[filename_start] == ' ') {
-    filename_start++;
+  if (stdout_pos != std::string::npos && stderr_pos != std::string::npos) {
+    if (stdout_pos > stderr_pos) {
+      args = args.substr(0, stdout_pos);
+      args = args.substr(0, args.find("2>"));
+    } else {
+      args = args.substr(0, stderr_pos);
+      stdout_pos = args.find("1>");
+      if (stdout_pos == std::string::npos) {
+        stdout_pos = args.find(">");
+      }
+      args = args.substr(0, stdout_pos);
+    }
+
+  } else if (stdout_pos != std::string::npos) {
+    args = args.substr(0, stdout_pos);
+  } else if (stderr_pos != std::string::npos) {
+    args = args.substr(0, stderr_pos);
   }
-
-  size_t filename_end = filename_start;
-  while (filename_end < args.length() && args[filename_end] != ' ') {
-    filename_end++;
-  }
-
-  redirection_spec.output_file =
-      args.substr(filename_start, filename_end - filename_start);
-  redirection_spec.has_redirection = true;
-
-  args = args.substr(0, redirection_pos);
 
   return redirection_spec;
 }
@@ -382,24 +430,6 @@ auto is_executable(const std::string &filepath) -> bool {
   return access(filepath.c_str(), X_OK) == 0;
 }
 
-auto redirect_stdout(std::string filename) -> bool {
-  int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-  if (fd == -1) {
-    std::cerr << "Failed to open file: " << filename << std::endl;
-    return false;
-  }
-
-  int duplicate_fd = dup2(fd, STDOUT_FILENO);
-  if (duplicate_fd == -1) {
-    std::cerr << "Failed to redirect output" << std::endl;
-    close(fd);
-    return false;
-  }
-
-  close(fd);
-  return true;
-}
-
 auto execute_command(const std::string &command, const std::string &args,
                      RedirectionSpec redirection_spec) -> bool {
   std::string executable_path;
@@ -410,7 +440,9 @@ auto execute_command(const std::string &command, const std::string &args,
     }
   }
 
-  bool needs_fork = redirection_spec.has_redirection || !is_builtin(command);
+  bool needs_fork = redirection_spec.has_stdout_redirection ||
+                    redirection_spec.has_stderr_redirection ||
+                    !is_builtin(command);
   if (needs_fork) {
     pid_t pid = fork();
     if (pid == -1) {
@@ -420,8 +452,14 @@ auto execute_command(const std::string &command, const std::string &args,
 
     // Child process
     if (pid == 0) {
-      if (redirection_spec.has_redirection) {
-        if (!redirect_stdout(redirection_spec.output_file)) {
+      if (redirection_spec.has_stdout_redirection) {
+        if (!redirect_stdout(redirection_spec.stdout_filename)) {
+          exit(1);
+        }
+      }
+
+      if (redirection_spec.has_stderr_redirection) {
+        if (!redirect_stderr(redirection_spec.stderr_filename)) {
           exit(1);
         }
       }
@@ -464,3 +502,39 @@ auto execute_command(const std::string &command, const std::string &args,
   return true;
 }
 #endif
+
+auto redirect_stdout(const std::string &filename) -> bool {
+  int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd == -1) {
+    std::cerr << "Failed to open file: " << filename << std::endl;
+    return false;
+  }
+
+  int duplicate_fd = dup2(fd, STDOUT_FILENO);
+  if (duplicate_fd == -1) {
+    std::cerr << "Failed to redirect output" << std::endl;
+    close(fd);
+    return false;
+  }
+
+  close(fd);
+  return true;
+}
+
+auto redirect_stderr(const std::string &filename) -> bool {
+  int fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd == -1) {
+    std::cerr << "Failed to open file: " << filename << std::endl;
+    return false;
+  }
+
+  int duplicate_fd = dup2(fd, STDERR_FILENO);
+  if (duplicate_fd == -1) {
+    std::cerr << "Failed to redirect error output" << std::endl;
+    close(fd);
+    return false;
+  }
+
+  close(fd);
+  return true;
+}
