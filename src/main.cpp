@@ -1,6 +1,7 @@
 #include <cstdlib>
 
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -14,6 +15,8 @@ constexpr char PATH_LIST_SEPARATOR = ';';
 #else
 
 #include <fcntl.h>
+#include <readline/history.h>
+#include <readline/readline.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -38,7 +41,9 @@ struct RedirectionSpec {
 };
 
 // Prompt & REPL
-auto print_prompt() -> void;
+auto read_input(const char *prompt) -> std::optional<std::string>;
+auto builtin_completion(const char *text, int start, int end) -> char **;
+auto builtin_generator(const char *text, int state) -> char *;
 auto repl_loop() -> void;
 
 // Parsing
@@ -76,22 +81,62 @@ auto main() -> int {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
+  rl_attempted_completion_function = builtin_completion;
   repl_loop();
+
   return 0;
 }
 
-auto print_prompt() -> void { std::cout << "$ "; }
+auto read_input(const char *prompt) -> std::optional<std::string> {
+  char *input_cstr = readline(prompt);
+  if (input_cstr == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string input(input_cstr);
+  free(input_cstr);
+
+  return input;
+}
+
+auto builtin_completion(const char *text, int start, int end) -> char ** {
+  if (start == 0) {
+    return rl_completion_matches(text, builtin_generator);
+  }
+
+  rl_attempted_completion_over = 1;
+  return nullptr;
+}
+
+auto builtin_generator(const char *text, int state) -> char * {
+  static const char *builtins[] = {"echo", "exit", nullptr};
+  static int list_index, len;
+
+  if (state == 0) {
+    list_index = 0;
+    len = strlen(text);
+  }
+
+  while (const char *name = builtins[list_index]) {
+    list_index++;
+
+    if (strncmp(name, text, len) == 0) {
+      // NOTE(abi): readline will free the array.
+      return strdup(name);
+    }
+  }
+
+  return nullptr;
+}
 
 auto repl_loop() -> void {
   while (true) {
-    print_prompt();
-
-    std::string input;
-    if (!std::getline(std::cin, input)) {
+    auto input = read_input("$ ");
+    if (!input.has_value()) {
       break;
     }
 
-    if (!handle_input(input)) {
+    if (!handle_input(input.value())) {
       break;
     }
   }
