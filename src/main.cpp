@@ -7,6 +7,9 @@
 #include <unordered_set>
 #include <vector>
 
+#include <algorithm>
+#include <dirent.h>
+
 #ifdef _WIN32
 
 #include <windows.h>
@@ -40,10 +43,10 @@ struct RedirectionSpec {
   RedirectionMode stderr_mode = RedirectionMode::TRUNCATE;
 };
 
-// Prompt & REPL
+// REPL
 auto read_input(const char *prompt) -> std::optional<std::string>;
-auto builtin_completion(const char *text, int start, int end) -> char **;
-auto builtin_generator(const char *text, int state) -> char *;
+auto command_completion(const char *text, int start, int end) -> char **;
+auto command_generator(const char *text, int state) -> char *;
 auto repl_loop() -> void;
 
 // Parsing
@@ -67,7 +70,11 @@ auto execute_builtin(const std::string &command, const std::string &args)
 
 // External commands
 auto split_path(const std::string &path) -> std::vector<std::string>;
+auto get_path_directories() -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
+auto get_matching_executables_in_path(const std::string &prefix,
+                                      bool sort = true)
+    -> std::vector<std::string>;
 auto is_executable(const std::string &filepath) -> bool;
 auto execute_command(const std::string &command, const std::string &args,
                      RedirectionSpec redirection_spec) -> bool;
@@ -81,7 +88,7 @@ auto main() -> int {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  rl_attempted_completion_function = builtin_completion;
+  rl_attempted_completion_function = command_completion;
   repl_loop();
 
   return 0;
@@ -99,31 +106,42 @@ auto read_input(const char *prompt) -> std::optional<std::string> {
   return input;
 }
 
-auto builtin_completion(const char *text, int start, int end) -> char ** {
+auto command_completion(const char *text, int start, int end) -> char ** {
   if (start == 0) {
-    return rl_completion_matches(text, builtin_generator);
+    return rl_completion_matches(text, command_generator);
   }
 
   rl_attempted_completion_over = 1;
   return nullptr;
 }
 
-auto builtin_generator(const char *text, int state) -> char * {
-  static const char *builtins[] = {"echo", "exit", nullptr};
-  static int list_index, len;
+auto command_generator(const char *text, int state) -> char * {
+  static std::vector<std::string> all_matches;
+  static size_t match_index;
 
   if (state == 0) {
-    list_index = 0;
-    len = strlen(text);
+    all_matches.clear();
+    match_index = 0;
+
+    size_t len = strlen(text);
+
+    // Builtins
+    static const char *builtins[] = {"echo", "exit", nullptr};
+    for (int i = 0; builtins[i] != nullptr; i++) {
+      if (strncmp(builtins[i], text, len) == 0) {
+        all_matches.push_back(builtins[i]);
+      }
+    }
+
+    // Executables
+    std::vector<std::string> executables =
+        get_matching_executables_in_path(text);
+    all_matches.insert(all_matches.end(), executables.begin(),
+                       executables.end());
   }
 
-  while (const char *name = builtins[list_index]) {
-    list_index++;
-
-    if (strncmp(name, text, len) == 0) {
-      // NOTE(abi): readline will free the array.
-      return strdup(name);
-    }
+  if (match_index < all_matches.size()) {
+    return strdup(all_matches[match_index++].c_str());
   }
 
   return nullptr;
@@ -506,15 +524,17 @@ auto split_path(const std::string &path) -> std::vector<std::string> {
   return directories;
 }
 
-auto find_executable_in_path(const std::string &command) -> std::string {
+auto get_path_directories() -> std::vector<std::string> {
   const char *path_cstr = std::getenv("PATH");
   if (path_cstr == nullptr) {
-    return "";
+    return {};
   }
 
-  std::string path(path_cstr);
-  std::vector<std::string> directories = split_path(path);
+  return split_path(path_cstr);
+}
 
+auto find_executable_in_path(const std::string &command) -> std::string {
+  std::vector<std::string> directories = get_path_directories();
   for (const std::string &dir : directories) {
     std::string filepath = dir + "/" + command;
     if (is_executable(filepath)) {
@@ -523,6 +543,51 @@ auto find_executable_in_path(const std::string &command) -> std::string {
   }
 
   return "";
+}
+
+auto get_matching_executables_in_path(const std::string &prefix, bool sort)
+    -> std::vector<std::string> {
+  std::unordered_set<std::string> unique_executables;
+
+  std::vector<std::string> directories = get_path_directories();
+  for (const std::string &dir : directories) {
+    // Check if the directory exists
+    struct stat st;
+    if (stat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+      continue;
+    }
+
+    // Open the directory
+    DIR *dirp = opendir(dir.c_str());
+    if (dirp == nullptr) {
+      continue;
+    }
+
+    // Read entries
+    struct dirent *entry;
+    while ((entry = readdir(dirp)) != nullptr) {
+      std::string name = entry->d_name;
+      if (name == "." || name == "..") {
+        continue;
+      }
+
+      if (name.find(prefix) == 0) {
+        if (is_executable(dir + "/" + name)) {
+          unique_executables.insert(name);
+        }
+      }
+    }
+
+    closedir(dirp);
+  }
+
+  std::vector<std::string> matches(unique_executables.begin(),
+                                   unique_executables.end());
+  if (sort) {
+    std::sort(matches.begin(), matches.end());
+  }
+
+  return matches;
 }
 
 #ifdef _WIN32
