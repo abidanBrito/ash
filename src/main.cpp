@@ -1,5 +1,6 @@
 #include <cstdlib>
 
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -597,6 +598,43 @@ auto cd_command(const std::string &path) -> void {
 }
 
 auto history_command(const std::string &args) -> void {
+  if (args.find("-r") == 0) {
+    // Filename
+    size_t filename_start = args.find_first_not_of(" \t", 2);
+    if (filename_start == std::string::npos) {
+      std::cerr << "history: -r requires a filename" << std::endl;
+      return;
+    }
+
+    std::string filename = args.substr(filename_start);
+
+    size_t filename_end = filename.find_last_not_of(" \t");
+    if (filename_end != std::string::npos) {
+      filename = filename.substr(0, filename_end + 1);
+    }
+
+    // Read history file
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+      std::cerr << "history: cannot open " << filename << std::endl;
+      return;
+    }
+
+    // Parse commands & add them both history stores
+    std::string line;
+    while (std::getline(file, line)) {
+      if (line.empty()) {
+        continue;
+      }
+
+      command_history.push_back(line);
+      add_history(line.c_str());
+    }
+
+    file.close();
+    return;
+  }
+
   int num_entries = command_history.size();
 
   if (!args.empty()) {
