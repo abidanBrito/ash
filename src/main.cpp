@@ -69,6 +69,7 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec>;
 auto has_pipes(const std::string &input) -> bool;
 auto extract_filename_from_arguments(const std::string &args, size_t offset)
     -> std::optional<std::string>;
+auto trim_whitespace(const std::string &str) -> std::string;
 
 // Input handling
 auto handle_input(const std::string &input) -> bool;
@@ -444,14 +445,10 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
       in_double_quotes = !in_double_quotes;
       current_segment += c;
     } else if (!in_single_quotes && !in_double_quotes && c == '|') {
+      // Parse segment
       if (!current_segment.empty()) {
-        // Trim whitespace
-        size_t start = current_segment.find_first_not_of(" \t");
-        size_t end = current_segment.find_last_not_of(" \t");
-        if (start != std::string::npos) {
-          std::string trimmed = current_segment.substr(start, end - start + 1);
-
-          // Parse segment
+        std::string trimmed = trim_whitespace(current_segment);
+        if (!trimmed.empty()) {
           auto [command, command_end_pos] = parse_command_and_position(trimmed);
           std::string args = (command_end_pos < trimmed.length())
                                  ? trimmed.substr(command_end_pos + 1)
@@ -469,11 +466,8 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
 
   // Process last segment
   if (!current_segment.empty()) {
-    size_t start = current_segment.find_first_not_of(" \t");
-    size_t end = current_segment.find_last_not_of(" \t");
-    if (start != std::string::npos) {
-      std::string trimmed = current_segment.substr(start, end - start + 1);
-
+    std::string trimmed = trim_whitespace(current_segment);
+    if (!trimmed.empty()) {
       auto [command, command_end_pos] = parse_command_and_position(trimmed);
       std::string args = (command_end_pos < trimmed.length())
                              ? trimmed.substr(command_end_pos + 1)
@@ -519,6 +513,16 @@ auto extract_filename_from_arguments(const std::string &args, size_t offset)
   }
 
   return filename;
+}
+
+auto trim_whitespace(const std::string &str) -> std::string {
+  size_t start = str.find_first_not_of(" \t");
+  if (start == std::string::npos) {
+    return "";
+  }
+
+  size_t end = str.find_last_not_of(" \t");
+  return str.substr(start, end - start + 1);
 }
 
 auto handle_input(const std::string &input) -> bool {
