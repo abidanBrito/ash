@@ -75,7 +75,7 @@ auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
-auto history_command() -> void;
+auto history_command(const std::string &args) -> void;
 auto is_builtin(const std::string &command) -> bool;
 
 // External commands (executables)
@@ -595,8 +595,24 @@ auto cd_command(const std::string &path) -> void {
   }
 }
 
-auto history_command() -> void {
-  for (size_t i = 0; i < command_history.size(); i++) {
+auto history_command(const std::string &args) -> void {
+  int num_entries = command_history.size();
+
+  if (!args.empty()) {
+    try {
+      num_entries = std::stoi(args);
+    } catch (...) {
+      std::cerr << "history: invalid argument" << std::endl;
+      return;
+    }
+  }
+
+  size_t start_index = 0;
+  if (num_entries < static_cast<int>(command_history.size())) {
+    start_index = command_history.size() - num_entries;
+  }
+
+  for (size_t i = start_index; i < command_history.size(); i++) {
     std::cout << std::setw(5) << (i + 1) << "  " << command_history[i]
               << std::endl;
   }
@@ -617,7 +633,7 @@ auto execute_builtin(const std::string &command, const std::string &args)
   } else if (command == "cd") {
     cd_command(args);
   } else if (command == "history") {
-    history_command();
+    history_command(args);
   }
 }
 
