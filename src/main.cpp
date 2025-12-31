@@ -447,11 +447,8 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
       in_double_quotes = !in_double_quotes;
       current_segment += c;
     } else if (!in_single_quotes && !in_double_quotes && c == '|') {
-      // Parse segment
-      if (!current_segment.empty()) {
-        if (auto cmd = parse_command_segment(current_segment)) {
-          commands.push_back(*cmd);
-        }
+      if (auto cmd = parse_command_segment(current_segment)) {
+        commands.push_back(*cmd);
       }
       current_segment.clear();
     } else {
@@ -459,11 +456,8 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
     }
   }
 
-  // Process last segment
-  if (!current_segment.empty()) {
-    if (auto cmd = parse_command_segment(current_segment)) {
-      commands.push_back(*cmd);
-    }
+  if (auto cmd = parse_command_segment(current_segment)) {
+    commands.push_back(*cmd);
   }
 
   return commands;
