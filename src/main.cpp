@@ -635,6 +635,36 @@ auto history_command(const std::string &args) -> void {
     return;
   }
 
+  if (args.find("-w") == 0) {
+    // Filename
+    size_t filename_start = args.find_first_not_of(" \t", 2);
+    if (filename_start == std::string::npos) {
+      std::cerr << "history: -w requires a filename" << std::endl;
+      return;
+    }
+
+    std::string filename = args.substr(filename_start);
+
+    size_t filename_end = filename.find_last_not_of(" \t");
+    if (filename_end != std::string::npos) {
+      filename = filename.substr(0, filename_end + 1);
+    }
+
+    // Write history to file
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+      std::cerr << "history: cannot open " << filename << std::endl;
+      return;
+    }
+
+    for (const std::string &cmd : command_history) {
+      file << cmd << std::endl;
+    }
+
+    file.close();
+    return;
+  }
+
   int num_entries = command_history.size();
 
   if (!args.empty()) {
