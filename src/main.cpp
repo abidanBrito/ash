@@ -77,8 +77,10 @@ auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
+auto load_history_from_file(const std::string &filepath) -> bool;
 auto history_command(const std::string &args) -> void;
 auto is_builtin(const std::string &command) -> bool;
+auto get_histfile() -> std::optional<std::string>;
 
 // External commands (executables)
 auto split_path(const std::string &path) -> std::vector<std::string>;
@@ -105,7 +107,13 @@ auto main() -> int {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
+  auto histfile = get_histfile();
+  if (histfile.has_value()) {
+    load_history_from_file(histfile.value());
+  }
+
   rl_attempted_completion_function = command_completion;
+
   repl_loop();
 
   return 0;
@@ -598,6 +606,28 @@ auto cd_command(const std::string &path) -> void {
   }
 }
 
+auto load_history_from_file(const std::string &filepath) -> bool {
+  // Read history file
+  std::ifstream file(filepath);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  // Parse commands & add them both history stores
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.empty()) {
+      continue;
+    }
+
+    command_history.push_back(line);
+    add_history(line.c_str());
+  }
+
+  file.close();
+  return true;
+}
+
 auto history_command(const std::string &args) -> void {
   if (args.find("-r") == 0) {
     // Filename
@@ -614,25 +644,10 @@ auto history_command(const std::string &args) -> void {
       filename = filename.substr(0, filename_end + 1);
     }
 
-    // Read history file
-    std::ifstream file(filename);
-    if (!file.is_open()) {
+    if (!load_history_from_file(filename)) {
       std::cerr << "history: cannot open " << filename << std::endl;
-      return;
     }
 
-    // Parse commands & add them both history stores
-    std::string line;
-    while (std::getline(file, line)) {
-      if (line.empty()) {
-        continue;
-      }
-
-      command_history.push_back(line);
-      add_history(line.c_str());
-    }
-
-    file.close();
     return;
   }
 
@@ -702,6 +717,15 @@ auto history_command(const std::string &args) -> void {
 
 auto is_builtin(const std::string &command) -> bool {
   return SHELL_BUILTINS.find(command) != SHELL_BUILTINS.end();
+}
+
+auto get_histfile() -> std::optional<std::string> {
+  const char *histfile = std::getenv("HISTFILE");
+  if (histfile == nullptr) {
+    return std::nullopt;
+  }
+
+  return std::string(histfile);
 }
 
 auto execute_builtin(const std::string &command, const std::string &args)
