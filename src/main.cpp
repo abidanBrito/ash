@@ -1,5 +1,6 @@
 #include <cstdlib>
 
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -596,7 +597,8 @@ auto cd_command(const std::string &path) -> void {
 
 auto history_command() -> void {
   for (size_t i = 0; i < command_history.size(); i++) {
-    std::cout << command_history[i] << std::endl;
+    std::cout << std::setw(5) << (i + 1) << "  " << command_history[i]
+              << std::endl;
   }
 }
 
