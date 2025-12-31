@@ -66,6 +66,8 @@ auto parse_command_and_position(const std::string &input)
 auto parse_arguments(const std::string &args) -> std::vector<std::string>;
 auto parse_redirection(std::string &args) -> RedirectionSpec;
 auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec>;
+auto parse_command_segment(const std::string &segment)
+    -> std::optional<CommandSpec>;
 auto has_pipes(const std::string &input) -> bool;
 auto extract_filename_from_arguments(const std::string &args, size_t offset)
     -> std::optional<std::string>;
@@ -447,15 +449,8 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
     } else if (!in_single_quotes && !in_double_quotes && c == '|') {
       // Parse segment
       if (!current_segment.empty()) {
-        std::string trimmed = trim_whitespace(current_segment);
-        if (!trimmed.empty()) {
-          auto [command, command_end_pos] = parse_command_and_position(trimmed);
-          std::string args = (command_end_pos < trimmed.length())
-                                 ? trimmed.substr(command_end_pos + 1)
-                                 : "";
-          RedirectionSpec redirection_spec = parse_redirection(args);
-
-          commands.push_back({command, args, redirection_spec});
+        if (auto cmd = parse_command_segment(current_segment)) {
+          commands.push_back(*cmd);
         }
       }
       current_segment.clear();
@@ -466,19 +461,28 @@ auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
 
   // Process last segment
   if (!current_segment.empty()) {
-    std::string trimmed = trim_whitespace(current_segment);
-    if (!trimmed.empty()) {
-      auto [command, command_end_pos] = parse_command_and_position(trimmed);
-      std::string args = (command_end_pos < trimmed.length())
-                             ? trimmed.substr(command_end_pos + 1)
-                             : "";
-      RedirectionSpec redirection_spec = parse_redirection(args);
-
-      commands.push_back({command, args, redirection_spec});
+    if (auto cmd = parse_command_segment(current_segment)) {
+      commands.push_back(*cmd);
     }
   }
 
   return commands;
+}
+
+auto parse_command_segment(const std::string &segment)
+    -> std::optional<CommandSpec> {
+  std::string trimmed = trim_whitespace(segment);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+
+  auto [command, command_end_pos] = parse_command_and_position(trimmed);
+  std::string args = (command_end_pos < trimmed.length())
+                         ? trimmed.substr(command_end_pos + 1)
+                         : "";
+  RedirectionSpec redirection_spec = parse_redirection(args);
+
+  return CommandSpec{command, args, redirection_spec};
 }
 
 auto has_pipes(const std::string &input) -> bool {
