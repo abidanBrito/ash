@@ -63,13 +63,11 @@ auto command_generator(const char *text, int state) -> char * {
     all_matches.clear();
     match_index = 0;
 
-    size_t len = strlen(text);
-
     // Builtins
-    static const char *builtins[] = {"echo", "exit", nullptr};
-    for (int i = 0; builtins[i] != nullptr; i++) {
-      if (strncmp(builtins[i], text, len) == 0) {
-        all_matches.push_back(builtins[i]);
+    std::string prefix(text);
+    for (const std::string &builtin : SHELL_BUILTINS) {
+      if (builtin.find(prefix) == 0) {
+        all_matches.push_back(builtin);
       }
     }
 
