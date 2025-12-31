@@ -489,6 +489,7 @@ auto has_pipes(const std::string &input) -> bool {
 auto handle_input(const std::string &input) -> bool {
   if (!input.empty()) {
     command_history.push_back(input);
+    add_history(input.c_str());
   }
 
   if (has_pipes(input)) {
