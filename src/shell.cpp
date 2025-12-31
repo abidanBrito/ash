@@ -1,5 +1,6 @@
 #include "shell.hpp"
 #include "commands.hpp"
+#include "constants.hpp"
 
 #include <iostream>
 
@@ -15,6 +16,8 @@
 
 #endif
 
+namespace ash {
+
 auto initialize_shell() -> void {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
@@ -24,7 +27,7 @@ auto initialize_shell() -> void {
     load_history_from_file(histfile.value());
   }
 
-  rl_attempted_completion_function = command_completion;
+  ::rl_attempted_completion_function = command_completion;
 }
 
 auto cleanup_shell() -> void {
@@ -87,7 +90,7 @@ auto command_generator(const char *text, int state) -> char * {
 
 auto repl_loop() -> void {
   while (true) {
-    auto input = read_input("$ ");
+    auto input = read_input(config::PROMPT);
     if (!input.has_value()) {
       break;
     }
@@ -101,7 +104,7 @@ auto repl_loop() -> void {
 auto handle_input(const std::string &input) -> bool {
   if (!input.empty()) {
     command_history.push_back(input);
-    add_history(input.c_str());
+    ::add_history(input.c_str());
   }
 
   if (has_pipes(input)) {
@@ -350,3 +353,5 @@ auto execute_pipeline(const std::vector<CommandSpec> &commands) -> bool {
 
   return true;
 }
+
+} // namespace ash

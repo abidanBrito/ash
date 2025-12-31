@@ -1,4 +1,5 @@
 #include "commands.hpp"
+#include "constants.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -21,6 +22,8 @@ constexpr char PATH_LIST_SEPARATOR = ';';
 constexpr char PATH_LIST_SEPARATOR = ':';
 
 #endif
+
+namespace ash {
 
 const std::unordered_set<std::string> SHELL_BUILTINS = {
     "exit", "echo", "type", "pwd", "cd", "history"};
@@ -55,7 +58,7 @@ auto type_command(const std::string &name) -> void {
 }
 
 auto pwd_command() -> void {
-  char cwd[1024];
+  char cwd[config::MAX_PATH_LENGTH];
   if (getcwd(cwd, sizeof(cwd)) != nullptr) {
     std::cout << cwd << std::endl;
     return;
@@ -90,7 +93,7 @@ auto cd_command(const std::string &path) -> void {
     target_path = path;
   }
 
-  char current_dir[1024];
+  char current_dir[config::MAX_PATH_LENGTH];
   if (getcwd(current_dir, sizeof(current_dir)) != nullptr) {
     if (chdir(target_path.c_str()) != 0) {
       std::cout << "cd: " << path << ": No such file or directory" << std::endl;
@@ -113,7 +116,7 @@ auto load_history_from_file(const std::string &filepath) -> bool {
     }
 
     command_history.push_back(line);
-    add_history(line.c_str());
+    ::add_history(line.c_str());
   }
 
   file.close();
@@ -329,8 +332,8 @@ auto is_executable(const std::string &filepath) -> bool {
 
 auto redirect_stream(int stream_file_descriptor, const std::string &filename,
                      RedirectionMode mode) -> bool {
-  int fd =
-      open(filename.c_str(), get_redirection_file_descriptor_flags(mode), 0644);
+  int fd = open(filename.c_str(), get_redirection_file_descriptor_flags(mode),
+                permissions::DEFAULT_FILE_MODE);
   if (fd == -1) {
     std::cerr << "Failed to open file: " << filename << std::endl;
     return false;
@@ -353,3 +356,5 @@ auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int {
 
   return flags;
 }
+
+} // namespace ash

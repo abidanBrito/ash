@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+namespace ash {
+
 enum class RedirectionMode { TRUNCATE, APPEND };
 
 struct RedirectionSpec {
@@ -33,3 +35,5 @@ auto has_pipes(const std::string &input) -> bool;
 auto extract_filename_from_arguments(const std::string &args, size_t offset)
     -> std::optional<std::string>;
 auto trim_whitespace(const std::string &str) -> std::string;
+
+} // namespace ash

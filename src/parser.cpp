@@ -1,5 +1,7 @@
 #include "parser.hpp"
 
+namespace ash {
+
 auto parse_command_and_position(const std::string &input)
     -> std::pair<std::string, size_t> {
   if (input.empty()) {
@@ -326,3 +328,5 @@ auto trim_whitespace(const std::string &str) -> std::string {
   size_t end = str.find_last_not_of(" \t");
   return str.substr(start, end - start + 1);
 }
+
+} // namespace ash

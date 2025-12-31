@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+namespace ash {
 // Lifecycle
 auto initialize_shell() -> void;
 auto cleanup_shell() -> void;
@@ -26,3 +27,5 @@ auto execute_builtin(const std::string &command, const std::string &args)
 auto execute_command(const std::string &command, const std::string &args,
                      RedirectionSpec redirection_spec) -> bool;
 auto execute_pipeline(const std::vector<CommandSpec> &commands) -> bool;
+
+} // namespace ash

@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+namespace ash {
+
 extern const std::unordered_set<std::string> SHELL_BUILTINS;
 extern std::string previous_directory;
 extern std::vector<std::string> command_history;
@@ -39,3 +41,5 @@ auto is_executable(const std::string &filepath) -> bool;
 auto redirect_stream(int stream_file_descriptor, const std::string &filename,
                      RedirectionMode mode) -> bool;
 auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int;
+
+} // namespace ash

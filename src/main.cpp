@@ -1,9 +1,9 @@
 #include "shell.hpp"
 
 auto main() -> int {
-  initialize_shell();
-  repl_loop();
-  cleanup_shell();
+  ash::initialize_shell();
+  ash::repl_loop();
+  ash::cleanup_shell();
 
   return 0;
 }
