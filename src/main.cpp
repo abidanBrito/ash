@@ -43,6 +43,12 @@ struct RedirectionSpec {
   RedirectionMode stderr_mode = RedirectionMode::TRUNCATE;
 };
 
+struct CommandSpec {
+  std::string command;
+  std::string args;
+  RedirectionSpec redirection;
+};
+
 // REPL
 auto read_input(const char *prompt) -> std::optional<std::string>;
 auto command_completion(const char *text, int start, int end) -> char **;
@@ -54,6 +60,8 @@ auto parse_command_and_position(const std::string &input)
     -> std::pair<std::string, size_t>;
 auto parse_arguments(const std::string &args) -> std::vector<std::string>;
 auto parse_redirection(std::string &args) -> RedirectionSpec;
+auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec>;
+auto has_pipes(const std::string &input) -> bool;
 
 // Input handling
 auto handle_input(const std::string &input) -> bool;
@@ -65,10 +73,8 @@ auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
 auto is_builtin(const std::string &command) -> bool;
-auto execute_builtin(const std::string &command, const std::string &args)
-    -> void;
 
-// External commands
+// External commands (executables)
 auto split_path(const std::string &path) -> std::vector<std::string>;
 auto get_path_directories() -> std::vector<std::string>;
 auto find_executable_in_path(const std::string &command) -> std::string;
@@ -76,13 +82,18 @@ auto get_matching_executables_in_path(const std::string &prefix,
                                       bool sort = true)
     -> std::vector<std::string>;
 auto is_executable(const std::string &filepath) -> bool;
-auto execute_command(const std::string &command, const std::string &args,
-                     RedirectionSpec redirection_spec) -> bool;
 
 // Redirection
 auto redirect_stream(int stream_file_descriptor, const std::string &filename,
                      RedirectionMode mode) -> bool;
 auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int;
+
+// Execution
+auto execute_builtin(const std::string &command, const std::string &args)
+    -> void;
+auto execute_command(const std::string &command, const std::string &args,
+                     RedirectionSpec redirection_spec) -> bool;
+auto execute_pipeline(const std::vector<CommandSpec> &commands) -> bool;
 
 auto main() -> int {
   std::cout << std::unitbuf;
@@ -396,9 +407,90 @@ auto parse_redirection(std::string &args) -> RedirectionSpec {
   return redirection_spec;
 }
 
-auto handle_input(const std::string &input) -> bool {
-  auto [command, command_end_pos] = parse_command_and_position(input);
+auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec> {
+  std::vector<CommandSpec> commands;
 
+  std::string current_segment;
+  bool in_single_quotes = false;
+  bool in_double_quotes = false;
+
+  for (char c : input) {
+    if (!in_double_quotes && c == '\'') {
+      in_single_quotes = !in_single_quotes;
+      current_segment += c;
+    } else if (!in_single_quotes && c == '\"') {
+      in_double_quotes = !in_double_quotes;
+      current_segment += c;
+    } else if (!in_single_quotes && !in_double_quotes && c == '|') {
+      if (!current_segment.empty()) {
+        // Trim whitespace
+        size_t start = current_segment.find_first_not_of(" \t");
+        size_t end = current_segment.find_last_not_of(" \t");
+        if (start != std::string::npos) {
+          std::string trimmed = current_segment.substr(start, end - start + 1);
+
+          // Parse segment
+          auto [command, command_end_pos] = parse_command_and_position(trimmed);
+          std::string args = (command_end_pos < trimmed.length())
+                                 ? trimmed.substr(command_end_pos + 1)
+                                 : "";
+          RedirectionSpec redirection_spec = parse_redirection(args);
+
+          commands.push_back({command, args, redirection_spec});
+        }
+      }
+      current_segment.clear();
+    } else {
+      current_segment += c;
+    }
+  }
+
+  // Process last segment
+  if (!current_segment.empty()) {
+    size_t start = current_segment.find_first_not_of(" \t");
+    size_t end = current_segment.find_last_not_of(" \t");
+    if (start != std::string::npos) {
+      std::string trimmed = current_segment.substr(start, end - start + 1);
+
+      auto [command, command_end_pos] = parse_command_and_position(trimmed);
+      std::string args = (command_end_pos < trimmed.length())
+                             ? trimmed.substr(command_end_pos + 1)
+                             : "";
+      RedirectionSpec redirection_spec = parse_redirection(args);
+
+      commands.push_back({command, args, redirection_spec});
+    }
+  }
+
+  return commands;
+}
+
+auto has_pipes(const std::string &input) -> bool {
+  bool in_single_quotes = false;
+  bool in_double_quotes = false;
+
+  for (char c : input) {
+    if (!in_double_quotes && c == '\'') {
+      in_single_quotes = !in_single_quotes;
+    } else if (!in_single_quotes && c == '\"') {
+      in_double_quotes = !in_double_quotes;
+    } else if (!in_single_quotes && !in_double_quotes && c == '|') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+auto handle_input(const std::string &input) -> bool {
+  if (has_pipes(input)) {
+    auto commands = parse_pipeline(input);
+    execute_pipeline(commands);
+
+    return true;
+  }
+
+  auto [command, command_end_pos] = parse_command_and_position(input);
   if (command.empty()) {
     return true;
   }
@@ -702,6 +794,131 @@ auto execute_command(const std::string &command, const std::string &args,
   return true;
 }
 #endif
+
+auto execute_pipeline(const std::vector<CommandSpec> &commands) -> bool {
+  if (commands.empty()) {
+    return false;
+  }
+
+  // Single command, no pipeline
+  if (commands.size() == 1) {
+    return execute_command(commands[0].command, commands[0].args,
+                           commands[0].redirection);
+  }
+
+  // Create pipes
+  int num_commands = commands.size();
+  int pipes[num_commands - 1][2];
+  for (int i = 0; i < num_commands - 1; i++) {
+    if (pipe(pipes[i]) == -1) {
+      std::cerr << "Failed to create pipe" << std::endl;
+      return false;
+    }
+  }
+
+  // Fork and execute commands
+  std::vector<pid_t> pids;
+  for (int i = 0; i < num_commands; i++) {
+    const CommandSpec &cmd = commands[i];
+
+    std::string executable_path;
+    if (!is_builtin(cmd.command)) {
+      executable_path = find_executable_in_path(cmd.command);
+      if (executable_path.empty()) {
+        for (int j = 0; j < num_commands - 1; j++) {
+          close(pipes[j][0]);
+          close(pipes[j][1]);
+        }
+        std::cerr << cmd.command << ": command not found" << std::endl;
+        return false;
+      }
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+      std::cerr << "Failed to fork process" << std::endl;
+      return false;
+    }
+
+    if (pid == 0) {
+      // Redirect stdin from the previous pipe, if it's not the first command
+      if (i > 0) {
+        dup2(pipes[i - 1][0], STDIN_FILENO);
+      }
+
+      // Redirect stdout to the next pipe, if it's not the last command
+      if (i < num_commands - 1) {
+        dup2(pipes[i][1], STDOUT_FILENO);
+      }
+
+      // Close all pipe file descriptors in child
+      for (int j = 0; j < num_commands - 1; j++) {
+        close(pipes[j][0]);
+        close(pipes[j][1]);
+      }
+
+      // Handle file redirections
+      if (cmd.redirection.has_stdout_redirection) {
+        if (!redirect_stream(STDOUT_FILENO, cmd.redirection.stdout_filename,
+                             cmd.redirection.stdout_mode)) {
+          exit(1);
+        }
+      }
+
+      if (cmd.redirection.has_stderr_redirection) {
+        if (!redirect_stream(STDERR_FILENO, cmd.redirection.stderr_filename,
+                             cmd.redirection.stderr_mode)) {
+          exit(1);
+        }
+      }
+
+      // Builtin
+      if (is_builtin(cmd.command)) {
+        execute_builtin(cmd.command, cmd.args);
+        exit(0);
+      }
+
+      // External command
+      std::string program_name;
+      size_t last_slash = executable_path.rfind('/');
+      if (last_slash != std::string::npos) {
+        program_name = executable_path.substr(last_slash + 1);
+      } else {
+        program_name = executable_path;
+      }
+
+      std::vector<std::string> parsed_args = parse_arguments(cmd.args);
+      std::vector<char *> c_args;
+      c_args.push_back(const_cast<char *>(program_name.c_str()));
+      for (const auto &arg : parsed_args) {
+        c_args.push_back(const_cast<char *>(arg.c_str()));
+      }
+      c_args.push_back(nullptr);
+
+      execvp(executable_path.c_str(), c_args.data());
+
+      std::cerr << executable_path << ": command not found" << std::endl;
+      exit(1);
+    }
+
+    pids.push_back(pid);
+  }
+
+  // NOTE(abi): we must close all pipes so that commands reading from stdin get
+  // EOF.
+  for (int i = 0; i < num_commands - 1; i++) {
+    close(pipes[i][0]);
+    close(pipes[i][1]);
+  }
+
+  // Wait for all children to complete
+  for (pid_t pid : pids) {
+    int status;
+    waitpid(pid, &status, 0);
+  }
+
+  return true;
+}
 
 auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int {
   int flags = O_WRONLY | O_CREAT;
