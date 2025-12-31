@@ -127,7 +127,7 @@ auto handle_input(const std::string &input) -> bool {
   std::string args = (command_end_pos < input.length())
                          ? input.substr(command_end_pos + 1)
                          : "";
-  RedirectionSpec redirection_spec = parse_redirection(args);
+  RedirectionSpec redirection_spec = parse_and_strip_redirection(args);
 
   auto success = execute_command(command, args, redirection_spec);
   if (!success) {

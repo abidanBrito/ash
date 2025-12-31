@@ -27,7 +27,7 @@ struct CommandSpec {
 auto parse_command_and_position(const std::string &input)
     -> std::pair<std::string, size_t>;
 auto parse_arguments(const std::string &args) -> std::vector<std::string>;
-auto parse_redirection(std::string &args) -> RedirectionSpec;
+auto parse_and_strip_redirection(std::string &args) -> RedirectionSpec;
 auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec>;
 auto parse_command_segment(const std::string &segment)
     -> std::optional<CommandSpec>;

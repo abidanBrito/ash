@@ -79,7 +79,7 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string> {
   return parsed_args;
 }
 
-auto parse_redirection(std::string &args) -> RedirectionSpec {
+auto parse_and_strip_redirection(std::string &args) -> RedirectionSpec {
   RedirectionSpec redirection_spec;
 
   size_t stderr_pos = std::string::npos;
@@ -280,7 +280,7 @@ auto parse_command_segment(const std::string &segment)
   std::string args = (command_end_pos < trimmed.length())
                          ? trimmed.substr(command_end_pos + 1)
                          : "";
-  RedirectionSpec redirection_spec = parse_redirection(args);
+  RedirectionSpec redirection_spec = parse_and_strip_redirection(args);
 
   return CommandSpec{command, args, redirection_spec};
 }
