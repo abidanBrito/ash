@@ -8,20 +8,13 @@
 #include <iostream>
 
 #ifdef _WIN32
-
 #include <windows.h>
-constexpr char PATH_LIST_SEPARATOR = ';';
-
 #else
-
 #include <dirent.h>
 #include <fcntl.h>
 #include <readline/history.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-constexpr char PATH_LIST_SEPARATOR = ':';
-
 #endif
 
 namespace ash {
@@ -219,7 +212,7 @@ auto split_path(const std::string &path) -> std::vector<std::string> {
   std::stringstream ss(path);
   std::string directory;
 
-  while (std::getline(ss, directory, PATH_LIST_SEPARATOR)) {
+  while (std::getline(ss, directory, config::PATH_LIST_SEPARATOR)) {
     directories.push_back(directory);
   }
 
