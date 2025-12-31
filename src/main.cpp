@@ -629,6 +629,8 @@ auto load_history_from_file(const std::string &filepath) -> bool {
   }
 
   file.close();
+  command_history_last_write_index = command_history.size();
+
   return true;
 }
 
@@ -649,9 +651,9 @@ auto write_history_to_file(const std::string &filepath, bool append) -> bool {
     }
   }
 
+  file.close();
   command_history_last_write_index = command_history.size();
 
-  file.close();
   return true;
 }
 
