@@ -35,6 +35,7 @@ const std::unordered_set<std::string> SHELL_BUILTINS = {
 
 std::string previous_directory;
 std::vector<std::string> command_history;
+size_t command_history_last_write_index = 0;
 
 enum class RedirectionMode { TRUNCATE, APPEND };
 
@@ -635,11 +636,14 @@ auto history_command(const std::string &args) -> void {
     return;
   }
 
-  if (args.find("-w") == 0) {
+  if (args.find("-w") == 0 || args.find("-a") == 0) {
+    bool append_mode = (args.find("-a") == 0);
+
     // Filename
     size_t filename_start = args.find_first_not_of(" \t", 2);
     if (filename_start == std::string::npos) {
-      std::cerr << "history: -w requires a filename" << std::endl;
+      std::cerr << "history: " << (append_mode ? "-a" : "-w")
+                << " requires a filename" << std::endl;
       return;
     }
 
@@ -651,15 +655,24 @@ auto history_command(const std::string &args) -> void {
     }
 
     // Write history to file
-    std::ofstream file(filename);
+    std::ofstream file(filename, append_mode ? std::ios::app : std::ios::out);
     if (!file.is_open()) {
       std::cerr << "history: cannot open " << filename << std::endl;
       return;
     }
 
-    for (const std::string &cmd : command_history) {
-      file << cmd << std::endl;
+    if (append_mode) {
+      for (size_t i = command_history_last_write_index;
+           i < command_history.size(); i++) {
+        file << command_history[i] << std::endl;
+      }
+    } else {
+      for (const std::string &cmd : command_history) {
+        file << cmd << std::endl;
+      }
     }
+
+    command_history_last_write_index = command_history.size();
 
     file.close();
     return;
