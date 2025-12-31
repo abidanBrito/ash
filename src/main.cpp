@@ -67,6 +67,8 @@ auto parse_arguments(const std::string &args) -> std::vector<std::string>;
 auto parse_redirection(std::string &args) -> RedirectionSpec;
 auto parse_pipeline(const std::string &input) -> std::vector<CommandSpec>;
 auto has_pipes(const std::string &input) -> bool;
+auto extract_filename_from_arguments(const std::string &args, size_t offset)
+    -> std::optional<std::string>;
 
 // Input handling
 auto handle_input(const std::string &input) -> bool;
@@ -502,6 +504,23 @@ auto has_pipes(const std::string &input) -> bool {
   return false;
 }
 
+auto extract_filename_from_arguments(const std::string &args, size_t offset)
+    -> std::optional<std::string> {
+  size_t filename_start = args.find_first_not_of(" \t", offset);
+  if (filename_start == std::string::npos) {
+    return std::nullopt;
+  }
+
+  std::string filename = args.substr(filename_start);
+
+  size_t filename_end = filename.find_last_not_of(" \t");
+  if (filename_end != std::string::npos) {
+    filename = filename.substr(0, filename_end + 1);
+  }
+
+  return filename;
+}
+
 auto handle_input(const std::string &input) -> bool {
   if (!input.empty()) {
     command_history.push_back(input);
@@ -658,48 +677,30 @@ auto write_history_to_file(const std::string &filepath, bool append) -> bool {
 }
 
 auto history_command(const std::string &args) -> void {
-  if (args.find("-r") == 0) {
-    // Filename
-    size_t filename_start = args.find_first_not_of(" \t", 2);
-    if (filename_start == std::string::npos) {
-      std::cerr << "history: -r requires a filename" << std::endl;
-      return;
-    }
+  if (args.find("-r") == 0 || args.find("-w") == 0 || args.find("-a") == 0) {
+    bool read_mode = (args.find("-r") == 0);
+    bool append_mode = read_mode ? false : (args.find("-a") == 0);
 
-    std::string filename = args.substr(filename_start);
+    auto filename = extract_filename_from_arguments(args, 2);
+    if (!filename.has_value()) {
+      if (read_mode) {
+        std::cerr << "history: -r requires a filename" << std::endl;
+        return;
+      }
 
-    size_t filename_end = filename.find_last_not_of(" \t");
-    if (filename_end != std::string::npos) {
-      filename = filename.substr(0, filename_end + 1);
-    }
-
-    if (!load_history_from_file(filename)) {
-      std::cerr << "history: cannot open " << filename << std::endl;
-    }
-
-    return;
-  }
-
-  if (args.find("-w") == 0 || args.find("-a") == 0) {
-    bool append_mode = (args.find("-a") == 0);
-
-    // Filename
-    size_t filename_start = args.find_first_not_of(" \t", 2);
-    if (filename_start == std::string::npos) {
       std::cerr << "history: " << (append_mode ? "-a" : "-w")
                 << " requires a filename" << std::endl;
       return;
     }
 
-    std::string filename = args.substr(filename_start);
-
-    size_t filename_end = filename.find_last_not_of(" \t");
-    if (filename_end != std::string::npos) {
-      filename = filename.substr(0, filename_end + 1);
-    }
-
-    if (!write_history_to_file(filename, append_mode)) {
-      std::cerr << "history: cannot open " << filename << std::endl;
+    if (read_mode) {
+      if (!load_history_from_file(*filename)) {
+        std::cerr << "history: cannot open " << *filename << std::endl;
+      }
+    } else {
+      if (!write_history_to_file(*filename, append_mode)) {
+        std::cerr << "history: cannot open " << *filename << std::endl;
+      }
     }
 
     return;
