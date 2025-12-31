@@ -78,6 +78,8 @@ auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
 auto load_history_from_file(const std::string &filepath) -> bool;
+auto write_history_to_file(const std::string &filepath, bool append = false)
+    -> bool;
 auto history_command(const std::string &args) -> void;
 auto is_builtin(const std::string &command) -> bool;
 auto get_histfile() -> std::optional<std::string>;
@@ -115,6 +117,10 @@ auto main() -> int {
   rl_attempted_completion_function = command_completion;
 
   repl_loop();
+
+  if (histfile.has_value()) {
+    write_history_to_file(histfile.value(), true);
+  }
 
   return 0;
 }
@@ -607,13 +613,11 @@ auto cd_command(const std::string &path) -> void {
 }
 
 auto load_history_from_file(const std::string &filepath) -> bool {
-  // Read history file
   std::ifstream file(filepath);
   if (!file.is_open()) {
     return false;
   }
 
-  // Parse commands & add them both history stores
   std::string line;
   while (std::getline(file, line)) {
     if (line.empty()) {
@@ -623,6 +627,29 @@ auto load_history_from_file(const std::string &filepath) -> bool {
     command_history.push_back(line);
     add_history(line.c_str());
   }
+
+  file.close();
+  return true;
+}
+
+auto write_history_to_file(const std::string &filepath, bool append) -> bool {
+  std::ofstream file(filepath, append ? std::ios::app : std::ios::out);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  if (append) {
+    for (size_t i = command_history_last_write_index;
+         i < command_history.size(); i++) {
+      file << command_history[i] << std::endl;
+    }
+  } else {
+    for (const std::string &cmd : command_history) {
+      file << cmd << std::endl;
+    }
+  }
+
+  command_history_last_write_index = command_history.size();
 
   file.close();
   return true;
@@ -669,27 +696,10 @@ auto history_command(const std::string &args) -> void {
       filename = filename.substr(0, filename_end + 1);
     }
 
-    // Write history to file
-    std::ofstream file(filename, append_mode ? std::ios::app : std::ios::out);
-    if (!file.is_open()) {
+    if (!write_history_to_file(filename, append_mode)) {
       std::cerr << "history: cannot open " << filename << std::endl;
-      return;
     }
 
-    if (append_mode) {
-      for (size_t i = command_history_last_write_index;
-           i < command_history.size(); i++) {
-        file << command_history[i] << std::endl;
-      }
-    } else {
-      for (const std::string &cmd : command_history) {
-        file << cmd << std::endl;
-      }
-    }
-
-    command_history_last_write_index = command_history.size();
-
-    file.close();
     return;
   }
 
