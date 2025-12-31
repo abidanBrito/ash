@@ -28,9 +28,11 @@ constexpr char PATH_LIST_SEPARATOR = ':';
 
 #endif
 
-const std::unordered_set<std::string> SHELL_BUILTINS = {"exit", "echo", "type",
-                                                        "pwd", "cd"};
+const std::unordered_set<std::string> SHELL_BUILTINS = {
+    "exit", "echo", "type", "pwd", "cd", "history"};
+
 std::string previous_directory;
+std::vector<std::string> command_history;
 
 enum class RedirectionMode { TRUNCATE, APPEND };
 
@@ -72,6 +74,7 @@ auto echo_command(const std::vector<std::string> &args) -> void;
 auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
+auto history_command() -> void;
 auto is_builtin(const std::string &command) -> bool;
 
 // External commands (executables)
@@ -483,6 +486,10 @@ auto has_pipes(const std::string &input) -> bool {
 }
 
 auto handle_input(const std::string &input) -> bool {
+  if (!input.empty()) {
+    command_history.push_back(input);
+  }
+
   if (has_pipes(input)) {
     auto commands = parse_pipeline(input);
     execute_pipeline(commands);
@@ -587,6 +594,12 @@ auto cd_command(const std::string &path) -> void {
   }
 }
 
+auto history_command() -> void {
+  for (size_t i = 0; i < command_history.size(); i++) {
+    std::cout << command_history[i] << std::endl;
+  }
+}
+
 auto is_builtin(const std::string &command) -> bool {
   return SHELL_BUILTINS.find(command) != SHELL_BUILTINS.end();
 }
@@ -601,6 +614,8 @@ auto execute_builtin(const std::string &command, const std::string &args)
     pwd_command();
   } else if (command == "cd") {
     cd_command(args);
+  } else if (command == "history") {
+    history_command();
   }
 }
 
