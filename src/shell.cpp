@@ -1,6 +1,7 @@
 #include "shell.hpp"
 #include "commands.hpp"
 #include "constants.hpp"
+#include "state.hpp"
 
 #include <iostream>
 
@@ -103,7 +104,7 @@ auto repl_loop() -> void {
 
 auto handle_input(const std::string &input) -> bool {
   if (!input.empty()) {
-    command_history.push_back(input);
+    shell_state.command_history.push_back(input);
     ::add_history(input.c_str());
   }
 

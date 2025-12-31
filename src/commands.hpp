@@ -26,9 +26,6 @@ enum class StandardStream : int {
 };
 
 extern const std::unordered_set<std::string> SHELL_BUILTINS;
-extern std::string previous_directory;
-extern std::vector<std::string> command_history;
-extern size_t command_history_last_write_index;
 
 // Builtin commands
 auto echo_command(const std::vector<std::string> &args) -> void;

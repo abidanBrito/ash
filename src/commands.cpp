@@ -1,5 +1,6 @@
 #include "commands.hpp"
 #include "constants.hpp"
+#include "state.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -28,9 +29,7 @@ namespace ash {
 const std::unordered_set<std::string> SHELL_BUILTINS = {
     "exit", "echo", "type", "pwd", "cd", "history"};
 
-std::string previous_directory;
-std::vector<std::string> command_history;
-size_t command_history_last_write_index = 0;
+ShellState shell_state;
 
 auto echo_command(const std::vector<std::string> &args) -> void {
   for (size_t i = 0; i < args.size(); i++) {
@@ -81,12 +80,12 @@ auto cd_command(const std::string &path) -> void {
   }
   // Previous directory
   else if (path == "-") {
-    if (previous_directory.empty()) {
+    if (shell_state.previous_directory.empty()) {
       pwd_command();
       return;
     }
 
-    target_path = previous_directory;
+    target_path = shell_state.previous_directory;
   }
   // Absolute/relative path
   else {
@@ -98,7 +97,7 @@ auto cd_command(const std::string &path) -> void {
     if (chdir(target_path.c_str()) != 0) {
       std::cout << "cd: " << path << ": No such file or directory" << std::endl;
     } else {
-      previous_directory = current_dir;
+      shell_state.previous_directory = current_dir;
     }
   }
 }
@@ -115,12 +114,13 @@ auto load_history_from_file(const std::string &filepath) -> bool {
       continue;
     }
 
-    command_history.push_back(line);
+    shell_state.command_history.push_back(line);
     ::add_history(line.c_str());
   }
 
   file.close();
-  command_history_last_write_index = command_history.size();
+  shell_state.command_history_last_write_index =
+      shell_state.command_history.size();
 
   return true;
 }
@@ -132,18 +132,19 @@ auto write_history_to_file(const std::string &filepath, bool append) -> bool {
   }
 
   if (append) {
-    for (size_t i = command_history_last_write_index;
-         i < command_history.size(); i++) {
-      file << command_history[i] << std::endl;
+    for (size_t i = shell_state.command_history_last_write_index;
+         i < shell_state.command_history.size(); i++) {
+      file << shell_state.command_history[i] << std::endl;
     }
   } else {
-    for (const std::string &cmd : command_history) {
+    for (const std::string &cmd : shell_state.command_history) {
       file << cmd << std::endl;
     }
   }
 
   file.close();
-  command_history_last_write_index = command_history.size();
+  shell_state.command_history_last_write_index =
+      shell_state.command_history.size();
 
   return true;
 }
@@ -178,7 +179,7 @@ auto history_command(const std::string &args) -> void {
     return;
   }
 
-  int num_entries = command_history.size();
+  int num_entries = shell_state.command_history.size();
 
   if (!args.empty()) {
     try {
@@ -190,13 +191,13 @@ auto history_command(const std::string &args) -> void {
   }
 
   size_t start_index = 0;
-  if (num_entries < static_cast<int>(command_history.size())) {
-    start_index = command_history.size() - num_entries;
+  if (num_entries < static_cast<int>(shell_state.command_history.size())) {
+    start_index = shell_state.command_history.size() - num_entries;
   }
 
-  for (size_t i = start_index; i < command_history.size(); i++) {
-    std::cout << std::setw(5) << (i + 1) << "  " << command_history[i]
-              << std::endl;
+  for (size_t i = start_index; i < shell_state.command_history.size(); i++) {
+    std::cout << std::setw(5) << (i + 1) << "  "
+              << shell_state.command_history[i] << std::endl;
   }
 }
 
