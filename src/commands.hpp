@@ -7,7 +7,23 @@
 #include <unordered_set>
 #include <vector>
 
+#ifdef _WIN32
+
+// TODO(abi): ...
+
+#else
+
+#include <unistd.h>
+
+#endif
+
 namespace ash {
+
+enum class StandardStream : int {
+  IN = STDIN_FILENO,
+  OUT = STDOUT_FILENO,
+  ERR = STDERR_FILENO
+};
 
 extern const std::unordered_set<std::string> SHELL_BUILTINS;
 extern std::string previous_directory;
@@ -38,8 +54,8 @@ auto get_matching_executables_in_path(const std::string &prefix,
 auto is_executable(const std::string &filepath) -> bool;
 
 // Redirection
-auto redirect_stream(int stream_file_descriptor, const std::string &filename,
-                     RedirectionMode mode) -> bool;
+auto redirect_stream(StandardStream stream_file_descriptor,
+                     const std::string &filename, RedirectionMode mode) -> bool;
 auto get_redirection_file_descriptor_flags(RedirectionMode mode) -> int;
 
 } // namespace ash

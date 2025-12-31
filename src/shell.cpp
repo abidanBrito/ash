@@ -178,14 +178,16 @@ auto execute_command(const std::string &command, const std::string &args,
     // Child process
     if (pid == 0) {
       if (redirection_spec.has_stdout_redirection) {
-        if (!redirect_stream(STDOUT_FILENO, redirection_spec.stdout_filename,
+        if (!redirect_stream(StandardStream::OUT,
+                             redirection_spec.stdout_filename,
                              redirection_spec.stdout_mode)) {
           exit(1);
         }
       }
 
       if (redirection_spec.has_stderr_redirection) {
-        if (!redirect_stream(STDERR_FILENO, redirection_spec.stderr_filename,
+        if (!redirect_stream(StandardStream::ERR,
+                             redirection_spec.stderr_filename,
                              redirection_spec.stderr_mode)) {
           exit(1);
         }
@@ -277,12 +279,12 @@ auto execute_pipeline(const std::vector<CommandSpec> &commands) -> bool {
     if (pid == 0) {
       // Redirect stdin from the previous pipe, if it's not the first command
       if (i > 0) {
-        dup2(pipes[i - 1][0], STDIN_FILENO);
+        dup2(pipes[i - 1][0], static_cast<int>(StandardStream::IN));
       }
 
       // Redirect stdout to the next pipe, if it's not the last command
       if (i < num_commands - 1) {
-        dup2(pipes[i][1], STDOUT_FILENO);
+        dup2(pipes[i][1], static_cast<int>(StandardStream::OUT));
       }
 
       // Close all pipe file descriptors in child
@@ -293,14 +295,16 @@ auto execute_pipeline(const std::vector<CommandSpec> &commands) -> bool {
 
       // Handle file redirections
       if (cmd.redirection.has_stdout_redirection) {
-        if (!redirect_stream(STDOUT_FILENO, cmd.redirection.stdout_filename,
+        if (!redirect_stream(StandardStream::OUT,
+                             cmd.redirection.stdout_filename,
                              cmd.redirection.stdout_mode)) {
           exit(1);
         }
       }
 
       if (cmd.redirection.has_stderr_redirection) {
-        if (!redirect_stream(STDERR_FILENO, cmd.redirection.stderr_filename,
+        if (!redirect_stream(StandardStream::ERR,
+                             cmd.redirection.stderr_filename,
                              cmd.redirection.stderr_mode)) {
           exit(1);
         }

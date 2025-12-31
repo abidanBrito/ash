@@ -330,8 +330,9 @@ auto is_executable(const std::string &filepath) -> bool {
 }
 #endif
 
-auto redirect_stream(int stream_file_descriptor, const std::string &filename,
-                     RedirectionMode mode) -> bool {
+auto redirect_stream(StandardStream stream_file_descriptor,
+                     const std::string &filename, RedirectionMode mode)
+    -> bool {
   int fd = open(filename.c_str(), get_redirection_file_descriptor_flags(mode),
                 permissions::DEFAULT_FILE_MODE);
   if (fd == -1) {
@@ -339,7 +340,7 @@ auto redirect_stream(int stream_file_descriptor, const std::string &filename,
     return false;
   }
 
-  int duplicate_fd = dup2(fd, stream_file_descriptor);
+  int duplicate_fd = dup2(fd, static_cast<int>(stream_file_descriptor));
   if (duplicate_fd == -1) {
     std::cerr << "Failed to redirect output" << std::endl;
     close(fd);
