@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 
@@ -19,10 +20,21 @@
 
 namespace ash {
 
-const std::unordered_set<std::string> SHELL_BUILTINS = {
-    "exit", "echo", "type", "pwd", "cd", "history"};
-
 ShellState shell_state;
+
+using BuiltinHandler = std::function<void(const std::string &)>;
+const std::unordered_map<std::string, BuiltinHandler> BUILTIN_HANDLERS = {
+    {// NOTE(abi): we handle exit in handle_input(), but we still need to
+     // register it.
+     "exit", [](const std::string &) {}},
+    {"echo",
+     [](const std::string &args) { echo_command(parse_arguments(args)); }},
+    {"type", type_command},
+    {"pwd", [](const std::string &) { pwd_command(); }},
+    {"cd", cd_command},
+    {"history", history_command}};
+
+const std::unordered_set<std::string> SHELL_BUILTINS = get_builtin_names();
 
 auto echo_command(const std::vector<std::string> &args) -> void {
   for (size_t i = 0; i < args.size(); i++) {
@@ -192,6 +204,15 @@ auto history_command(const std::string &args) -> void {
     std::cout << std::setw(5) << (i + 1) << "  "
               << shell_state.command_history[i] << std::endl;
   }
+}
+
+auto get_builtin_names() -> std::unordered_set<std::string> {
+  std::unordered_set<std::string> names;
+  for (const auto &[name, handler] : BUILTIN_HANDLERS) {
+    names.insert(name);
+  }
+
+  return names;
 }
 
 auto is_builtin(const std::string &command) -> bool {

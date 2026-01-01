@@ -143,16 +143,9 @@ auto handle_invalid_command(const std::string &command) -> void {
 
 auto execute_builtin(const std::string &command, const std::string &args)
     -> void {
-  if (command == "echo") {
-    echo_command(parse_arguments(args));
-  } else if (command == "type") {
-    type_command(args);
-  } else if (command == "pwd") {
-    pwd_command();
-  } else if (command == "cd") {
-    cd_command(args);
-  } else if (command == "history") {
-    history_command(args);
+  auto it = BUILTIN_HANDLERS.find(command);
+  if (it != BUILTIN_HANDLERS.end()) {
+    it->second(args);
   }
 }
 

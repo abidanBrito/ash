@@ -2,6 +2,7 @@
 
 #include "parser.hpp"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -26,6 +27,9 @@ enum class StandardStream : int {
 };
 
 extern const std::unordered_set<std::string> SHELL_BUILTINS;
+extern const std::unordered_map<std::string,
+                                std::function<void(const std::string &)>>
+    BUILTIN_HANDLERS;
 
 // Builtin commands
 auto echo_command(const std::vector<std::string> &args) -> void;
@@ -33,6 +37,7 @@ auto type_command(const std::string &name) -> void;
 auto pwd_command() -> void;
 auto cd_command(const std::string &path) -> void;
 auto history_command(const std::string &args) -> void;
+auto get_builtin_names() -> std::unordered_set<std::string>;
 auto is_builtin(const std::string &command) -> bool;
 
 // History
