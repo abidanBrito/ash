@@ -1,0 +1,148 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "description": "Shared settings: Ninja generator, per-preset build directory, compile_commands.json",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "clang",
+            "hidden": true,
+            "description": "Use the Clang compiler",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "clang++"
+            }
+        },
+        {
+            "name": "gcc",
+            "hidden": true,
+            "description": "Use the GCC compiler",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "debug",
+            "hidden": true,
+            "description": "Debug build type",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "release",
+            "hidden": true,
+            "description": "Release build type",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "asan",
+            "hidden": true,
+            "description": "AddressSanitizer and UndefinedBehaviorSanitizer flags",
+            "cacheVariables": {
+                "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer"
+            }
+        },
+        {
+            "name": "clang-debug",
+            "displayName": "Clang Debug",
+            "description": "Debug build with Clang",
+            "inherits": [
+                "base",
+                "clang",
+                "debug"
+            ]
+        },
+        {
+            "name": "clang-release",
+            "displayName": "Clang Release",
+            "description": "Release build with Clang",
+            "inherits": [
+                "base",
+                "clang",
+                "release"
+            ]
+        },
+        {
+            "name": "clang-asan",
+            "displayName": "Clang Debug + ASan/UBSan",
+            "description": "Debug build with Clang, ASan and UBSan",
+            "inherits": [
+                "base",
+                "clang",
+                "debug",
+                "asan"
+            ]
+        },
+        {
+            "name": "gcc-debug",
+            "displayName": "GCC Debug",
+            "description": "Debug build with GCC",
+            "inherits": [
+                "base",
+                "gcc",
+                "debug"
+            ]
+        },
+        {
+            "name": "gcc-release",
+            "displayName": "GCC Release",
+            "description": "Release build with GCC",
+            "inherits": [
+                "base",
+                "gcc",
+                "release"
+            ]
+        },
+        {
+            "name": "gcc-asan",
+            "displayName": "GCC Debug + ASan/UBSan",
+            "description": "Debug build with GCC, ASan and UBSan",
+            "inherits": [
+                "base",
+                "gcc",
+                "debug",
+                "asan"
+            ]
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "clang-debug",
+            "configurePreset": "clang-debug"
+        },
+        {
+            "name": "clang-release",
+            "configurePreset": "clang-release"
+        },
+        {
+            "name": "clang-asan",
+            "configurePreset": "clang-asan"
+        },
+        {
+            "name": "gcc-debug",
+            "configurePreset": "gcc-debug"
+        },
+        {
+            "name": "gcc-release",
+            "configurePreset": "gcc-release"
+        },
+        {
+            "name": "gcc-asan",
+            "configurePreset": "gcc-asan"
+        }
+    ]
+}
