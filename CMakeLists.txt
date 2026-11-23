@@ -1,11 +1,25 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.25)
+project(
+    ash
+    VERSION 0.1.0
+    DESCRIPTION "Minimal, POSIX compliant shell implementation"
+    HOMEPAGE_URL "https://github.com/abidanBrito/ash"
+    LANGUAGES CXX
+)
 
-project(shell-starter-cpp)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-file(GLOB_RECURSE SOURCE_FILES src/*.cpp src/*.hpp)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(READLINE REQUIRED IMPORTED_TARGET readline)
 
-set(CMAKE_CXX_STANDARD 23) # Enable the C++23 standard
+add_executable(ash
+    src/main.cpp
+    src/shell.cpp
+    src/commands.cpp
+    src/parser.cpp
+)
 
-add_executable(shell ${SOURCE_FILES})
-
-target_link_libraries(shell PRIVATE readline)
+target_compile_options(ash PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(ash PRIVATE PkgConfig::READLINE)
