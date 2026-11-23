@@ -1,34 +1,83 @@
-[![progress-banner](https://backend.codecrafters.io/progress/shell/e964b571-9f11-419c-a3b7-b4a5c51cb90f)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# ash
 
-This is a starting point for C++ solutions to the
-["Build Your Own Shell" Challenge](https://app.codecrafters.io/courses/shell/overview).
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
+[![CMake 3.25+](https://img.shields.io/badge/CMake-3.25%2B-064F8C.svg)](https://cmake.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](https://github.com/abidanBrito/ash/blob/main/LICENSE)
 
-In this challenge, you'll build your own POSIX compliant shell that's capable of
-interpreting shell commands, running external programs and builtin commands like
-cd, pwd, echo and more. Along the way, you'll learn about shell command parsing,
-REPLs, builtin commands, and more.
+A small POSIX-like shell written in C++23.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## Features
 
-# Passing the first stage
+- Builtins: `echo`, `type`, `pwd`, `cd`, `history`, `exit`.
+- Running external programs found on `PATH`.
+- Pipelines.
+- Output redirection.
+- Single/double quoting and backslash escapes.
+- Line editing, history and tab completion.
+- Persistent history.
 
-The entry point for your `shell` implementation is in `src/main.cpp`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+## Requirements
+
+- GCC 11+ or Clang 17+.
+- CMake 3.25+.
+- Ninja (optional, only needed if you build with the CMake presets).
+- GNU Readline and its headers.
+- `pkg-config`.
+
+> [!NOTE]
+> Only Unix-like systems are supported for now.
+
+## Build & run
+
+### With presets
 
 ```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+cmake --preset clang-release
+cmake --build --preset clang-release
+
+./build/clang-release/ash
 ```
 
-Time to move on to the next stage!
+Presets are named `<compiler>-<variant>`, with `clang` or `gcc` as the compiler:
 
-# Stage 2 & beyond
+| Variant   | Description                     |
+| --------- | ------------------------------- |
+| `debug`   | Debug build                     |
+| `release` | Release build                   |
+| `asan`    | Debug build with ASan and UBSan |
 
-Note: This section is for stages 2 and beyond.
+> [!TIP]
+> `cmake --list-presets` and `cmake --build --list-presets` show all available CMake presets.
 
-1. Ensure you have `cmake` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.cpp`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+### Without presets
+
+Use any generator that CMake supports:
+
+```sh
+cmake -B build
+cmake --build build
+
+./build/ash
+```
+
+## Roadmap
+
+Not yet implemented:
+
+- [ ] Track exit statuses.
+- [ ] Signal handling.
+- [ ] Multi-line input.
+- [ ] Input redirection and `2>&1`.
+- [ ] Variables: assignment & expansion.
+- [ ] Tilde expansion and globbing.
+- [ ] Command substitution.
+- [ ] Command lists (`;`, `&&`, `||`).
+- [ ] Environment (`export`, `unset`).
+- [ ] Aliases (`alias`, `unalias`).
+- [ ] Background jobs and job control (`&`, `jobs`, `fg`, `bg`).
+- [ ] Compound commands (`if`, `while`, `for`).
+- [ ] Scripts, `-c` and comments.
+
+## License
+
+This repository is released under the MIT license. See [MIT](LICENSE) for details.
