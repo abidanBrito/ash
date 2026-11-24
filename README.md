@@ -6,6 +6,9 @@
 
 A small POSIX-like shell written in C++23.
 
+> [!NOTE]
+> Only Unix-like systems are supported for now.
+
 ## Features
 
 - Builtins: `echo`, `type`, `pwd`, `cd`, `history`, `exit`.
@@ -23,9 +26,6 @@ A small POSIX-like shell written in C++23.
 - Ninja (optional, only needed if you build with the CMake presets).
 - GNU Readline and its headers.
 - `pkg-config`.
-
-> [!NOTE]
-> Only Unix-like systems are supported for now.
 
 ## Build & run
 
