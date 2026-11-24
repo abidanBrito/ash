@@ -1,0 +1,3 @@
+# Swap for clang-release, clang-asan, gcc-debug, gcc-release or gcc-asan as needed
+CompileFlags:
+  CompilationDatabase: build/clang-debug
