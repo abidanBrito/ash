@@ -1,0 +1,27 @@
+---
+Checks: "
+cppcoreguidelines-*,
+bugprone-*,
+modernize-*,
+performance-*,
+readability-*,
+portability-*,
+misc-*,
+-cppcoreguidelines-avoid-magic-numbers,
+-bugprone-easily-swappable-parameters,
+-readability-magic-numbers,
+-readability-identifier-length,
+-readability-function-cognitive-complexity,
+-readability-inconsistent-declaration-parameter-name,
+-misc-non-private-member-variables-in-classes,
+-llvmlibc-*,
+-fuchsia-*,
+-android-*,
+-altera-*,
+-zircon-*,
+"
+WarningsAsErrors: false
+HeaderFilterRegex: '^[^/].*\.(h|hpp)$'
+FormatStyle:     none
+User:            abi
+...
